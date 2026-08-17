@@ -1,7 +1,8 @@
 ﻿'use client';
 
 import dynamic from 'next/dynamic';
-import { formatTimeRange, formatDateRange } from '@/lib/format';
+import { useRef } from 'react';
+import ListingSheet from './ListingSheet';
 
 const LeafletMap = dynamic(() => import('./LeafletMap'), {
   ssr: false,
@@ -23,10 +24,11 @@ export default function MapScreen({
   center,
   active = true,
 }) {
+  const mapWrapRef = useRef(null);
   const selectedSale = sales.find((s) => s.id === selectedSaleId);
 
   return (
-    <div className="map-wrap">
+    <div className="map-wrap" ref={mapWrapRef}>
       <LeafletMap
         sales={sales}
         favorites={favorites}
@@ -40,34 +42,13 @@ export default function MapScreen({
         <div className="map-chip">📍 {sales.length} nearby</div>
       </div>
 
-      {selectedSale && (
-        <div className={`map-peek ${favorites.includes(selectedSale.id) ? 'favorited' : ''}`}>
-          <div className="thumb" style={{ background: favorites.includes(selectedSale.id) ? '#e4f0e6' : '#faf1d8' }}>
-            {selectedSale.icon || '🏷️'}
-          </div>
-          <div className="card-body">
-            <p className="card-title">{selectedSale.title}</p>
-            <p className="card-addr">{selectedSale.address}</p>
-            <div className="card-meta">
-              {selectedSale.sale_date && (
-                <span className="time-badge mono">
-                  {formatDateRange(selectedSale.sale_date, selectedSale.end_date)}
-                </span>
-              )}
-              <span className="time-badge mono">
-                {selectedSale.time || formatTimeRange(selectedSale.start_time, selectedSale.end_time)}
-              </span>
-            </div>
-          </div>
-          <button
-            type="button"
-            className={`fav-btn ${favorites.includes(selectedSale.id) ? 'on' : ''}`}
-            onClick={() => onToggleFavorite(selectedSale.id)}
-          >
-            ★
-          </button>
-        </div>
-      )}
+      <ListingSheet
+        sale={selectedSale}
+        favorited={selectedSale ? favorites.includes(selectedSale.id) : false}
+        onToggleFavorite={onToggleFavorite}
+        onClose={() => onSelectSale(null)}
+        containerRef={mapWrapRef}
+      />
 
       {!selectedSale && favoritedSales.length > 0 && (
         <button type="button" className="route-pill" onClick={onOpenSaved}>

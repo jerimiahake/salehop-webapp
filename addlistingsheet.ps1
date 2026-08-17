@@ -1,4 +1,311 @@
-﻿@import url('https://fonts.googleapis.com/css2?family=Permanent+Marker&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,500&family=JetBrains+Mono:wght@500;700&display=swap');
+﻿# Replaces the small static map preview card with a draggable bottom
+# sheet: tapping a listing (from Browse, or a pin on the map) now opens it
+# parked at half-height over the map. Drag the little handle bar up (or
+# tap it) to expand to the full listing -- all photos + full description
+# -- or drag/tap it back down. Drag it all the way down (or tap X) to
+# dismiss back to just the map.
+#
+# App code only -- no database changes needed for this one.
+#
+# Safe to re-run if something fails partway through.
+
+$projectPath = "C:\Users\Bastian\Documents\WebDesign\SaleHop-app\salehopproject\salehop"
+
+Write-Host "Moving into $projectPath ..." -ForegroundColor Cyan
+if (-not (Test-Path $projectPath)) {
+    Write-Host "ERROR: That folder doesn't exist. Double-check the path and edit it at the top of this script." -ForegroundColor Red
+    exit 1
+}
+Set-Location $projectPath
+
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Write-Host "ERROR: git isn't installed (or not on PATH)." -ForegroundColor Red
+    exit 1
+}
+
+New-Item -ItemType Directory -Force -Path "components" | Out-Null
+
+Write-Host "Writing components\ListingSheet.js ..." -ForegroundColor Cyan
+@'
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import { formatTimeRange, formatDateRange } from '@/lib/format';
+
+const HALF_FRACTION = 0.42;
+const FULL_FRACTION = 0.88;
+const DISMISS_FRACTION = 0.2;
+const TAP_THRESHOLD_PX = 6; // pointer movement under this counts as a tap, not a drag
+
+// A draggable bottom sheet over the map. Tapping a sale (from Browse, or a
+// pin on the map itself) opens this parked at "half" height showing a
+// compact preview. Dragging (or tapping) the handle bar expands it to
+// "full" (photos + full description) or collapses it back to "half";
+// dragging past a dismiss threshold closes it entirely, same as the X
+// button.
+//
+// Height changes are applied directly to the DOM node during a drag (via
+// sheetRef), not through React state, so every pointermove doesn't trigger
+// a re-render -- state ("mode") only updates once the drag settles, which
+// keeps the gesture smooth on a real phone. The sheet's wrapper div is
+// always rendered (even before any sale has ever been selected) so
+// sheetRef.current already exists the first time a sale opens -- otherwise
+// that very first open couldn't animate in.
+export default function ListingSheet({ sale, favorited, onToggleFavorite, onClose, containerRef }) {
+  const sheetRef = useRef(null);
+  const [activeSale, setActiveSale] = useState(sale || null);
+  const [mode, setMode] = useState('closed'); // 'closed' | 'half' | 'full'
+  const dragState = useRef(null); // { startY, startHeight, moved } while a drag is in progress
+
+  useEffect(() => {
+    if (sale) {
+      setActiveSale(sale);
+      applyHeight(heightFor('half'), true);
+      setMode('half');
+    } else {
+      applyHeight(0, true);
+      setMode('closed');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sale?.id]);
+
+  function containerHeight() {
+    return containerRef.current?.clientHeight || (typeof window !== 'undefined' ? window.innerHeight : 800);
+  }
+
+  function heightFor(m) {
+    const h = containerHeight();
+    if (m === 'full') return h * FULL_FRACTION;
+    if (m === 'half') return h * HALF_FRACTION;
+    return 0;
+  }
+
+  function applyHeight(px, animate) {
+    const el = sheetRef.current;
+    if (!el) return;
+    el.classList.toggle('dragging', !animate);
+    el.style.height = `${px}px`;
+    if (!animate) {
+      // Next frame, let the CSS transition resume for future (non-drag)
+      // height changes -- keeping it off for one frame avoids the browser
+      // trying to animate the drag's own manual updates.
+      requestAnimationFrame(() => el.classList.remove('dragging'));
+    }
+  }
+
+  function settle(nextMode) {
+    setMode(nextMode);
+    applyHeight(heightFor(nextMode), true);
+    if (nextMode === 'closed') onClose?.();
+  }
+
+  function handlePointerDown(e) {
+    dragState.current = { startY: e.clientY, startHeight: heightFor(mode), moved: 0 };
+    applyHeight(heightFor(mode), false);
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  }
+
+  function handlePointerMove(e) {
+    const drag = dragState.current;
+    if (!drag) return;
+    const delta = e.clientY - drag.startY; // positive = moving down
+    drag.moved = Math.max(drag.moved, Math.abs(delta));
+    const h = containerHeight();
+    const next = Math.max(0, Math.min(h * 0.96, drag.startHeight - delta));
+    applyHeight(next, false);
+  }
+
+  function handlePointerUp() {
+    const drag = dragState.current;
+    dragState.current = null;
+    if (!drag) return;
+
+    if (drag.moved < TAP_THRESHOLD_PX) {
+      // A tap on the handle, not a drag -- toggle instead of snapping to
+      // whatever the pointer position happened to be.
+      settle(mode === 'full' ? 'half' : 'full');
+      return;
+    }
+
+    const h = containerHeight();
+    const currentPx = sheetRef.current?.getBoundingClientRect().height ?? 0;
+    if (currentPx < h * DISMISS_FRACTION) {
+      settle('closed');
+      return;
+    }
+    const midpoint = h * ((HALF_FRACTION + FULL_FRACTION) / 2);
+    settle(currentPx > midpoint ? 'full' : 'half');
+  }
+
+  const cover = activeSale?.photo_urls && activeSale.photo_urls.length > 0 ? activeSale.photo_urls[0] : null;
+  const dateRange = activeSale?.sale_date ? formatDateRange(activeSale.sale_date, activeSale.end_date) : null;
+  const time = activeSale
+    ? activeSale.time || (activeSale.start_time ? formatTimeRange(activeSale.start_time, activeSale.end_time) : '')
+    : '';
+
+  return (
+    <div ref={sheetRef} className="listing-sheet" style={{ height: 0 }}>
+      {activeSale && (
+        <>
+          <div
+            className="sheet-drag-zone"
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+          >
+            <div className="sheet-handle" />
+            <button type="button" className="sheet-close" onClick={() => settle('closed')} aria-label="Close">
+              ✕
+            </button>
+            <div className="sheet-head">
+              <div className="thumb" style={{ background: favorited ? '#e4f0e6' : '#faf1d8' }}>
+                {cover ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={cover} alt="" />
+                ) : (
+                  activeSale.icon || '🏷️'
+                )}
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <p className="card-title">{activeSale.title}</p>
+                <p className="card-addr">{activeSale.address}</p>
+                <div className="card-meta">
+                  {dateRange && <span className="time-badge mono">{dateRange}</span>}
+                  {time && <span className="time-badge mono">{time}</span>}
+                </div>
+              </div>
+              <button
+                type="button"
+                className={`sheet-fav ${favorited ? 'on' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleFavorite?.(activeSale.id);
+                }}
+                aria-label={favorited ? 'Remove from route' : 'Add to route'}
+              >
+                ★
+              </button>
+            </div>
+            <div className="expand-hint">
+              {mode === 'full' ? '▼ drag or tap to collapse ▼' : '▲ drag or tap to expand ▲'}
+            </div>
+          </div>
+
+          <div className="sheet-scroll">
+            {activeSale.is_neighborhood_sale && activeSale.neighborhood_name && (
+              <div className="neighborhood-badge" style={{ cursor: 'default', marginTop: 0, marginBottom: 12 }}>
+                🏘️ Part of {activeSale.neighborhood_name}
+              </div>
+            )}
+
+            {(activeSale.tags || []).length > 0 && (
+              <div className="card-meta" style={{ marginBottom: 4 }}>
+                {activeSale.tags.map((t) => (
+                  <span className="tag" key={t}>
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {activeSale.photo_urls && activeSale.photo_urls.length > 0 && (
+              <>
+                <div className="sheet-section-label">Photos</div>
+                <div className="sheet-photos">
+                  {activeSale.photo_urls.map((url) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img key={url} src={url} alt="" className="sheet-photo" />
+                  ))}
+                </div>
+              </>
+            )}
+
+            {activeSale.description && (
+              <>
+                <div className="sheet-section-label">Description</div>
+                <p className="sheet-desc">{activeSale.description}</p>
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+'@ | Set-Content -Encoding UTF8 "components\ListingSheet.js"
+
+Write-Host "Writing components\MapScreen.js ..." -ForegroundColor Cyan
+@'
+'use client';
+
+import dynamic from 'next/dynamic';
+import { useRef } from 'react';
+import ListingSheet from './ListingSheet';
+
+const LeafletMap = dynamic(() => import('./LeafletMap'), {
+  ssr: false,
+  loading: () => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--ink-soft)' }}>
+      Loading map…
+    </div>
+  ),
+});
+
+export default function MapScreen({
+  sales,
+  favorites,
+  selectedSaleId,
+  onSelectSale,
+  onToggleFavorite,
+  favoritedSales,
+  onOpenSaved,
+  center,
+  active = true,
+}) {
+  const mapWrapRef = useRef(null);
+  const selectedSale = sales.find((s) => s.id === selectedSaleId);
+
+  return (
+    <div className="map-wrap" ref={mapWrapRef}>
+      <LeafletMap
+        sales={sales}
+        favorites={favorites}
+        selectedSaleId={selectedSaleId}
+        onSelectSale={onSelectSale}
+        center={center}
+        active={active}
+      />
+
+      <div className="map-floating-row">
+        <div className="map-chip">📍 {sales.length} nearby</div>
+      </div>
+
+      <ListingSheet
+        sale={selectedSale}
+        favorited={selectedSale ? favorites.includes(selectedSale.id) : false}
+        onToggleFavorite={onToggleFavorite}
+        onClose={() => onSelectSale(null)}
+        containerRef={mapWrapRef}
+      />
+
+      {!selectedSale && favoritedSales.length > 0 && (
+        <button type="button" className="route-pill" onClick={onOpenSaved}>
+          <div className="dot" />
+          <span>
+            {favoritedSales.length} stop{favoritedSales.length > 1 ? 's' : ''} on your route
+          </span>
+          <span className="go">Open ▸</span>
+        </button>
+      )}
+    </div>
+  );
+}
+'@ | Set-Content -Encoding UTF8 "components\MapScreen.js"
+
+Write-Host "Writing app\globals.css ..." -ForegroundColor Cyan
+@'
+@import url('https://fonts.googleapis.com/css2?family=Permanent+Marker&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,500&family=JetBrains+Mono:wght@500;700&display=swap');
 
 :root {
   --paper: #FAF6EC;
@@ -389,3 +696,26 @@ textarea { resize: vertical; min-height: 80px; }
   border-left: 5px solid var(--green); pointer-events: none;
 }
 .toast.show { transform: translateY(0); opacity: 1; }
+'@ | Set-Content -Encoding UTF8 "app\globals.css"
+
+Write-Host "Staging, committing, and pushing ..." -ForegroundColor Cyan
+git add .
+git commit -m "Add draggable bottom sheet for listing details on the map screen"
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "If that failed with 'Please tell me who you are', run these two lines (with your info) then re-run this script:" -ForegroundColor Yellow
+    Write-Host '  git config --global user.email "you@example.com"' -ForegroundColor Yellow
+    Write-Host '  git config --global user.name "Your Name"' -ForegroundColor Yellow
+    exit 1
+}
+
+git push
+
+if ($LASTEXITCODE -eq 0) {
+    Write-Host ""
+    Write-Host "Done! Once Vercel finishes deploying: tap any listing, then try dragging the handle bar (or just tapping it) up and down over the map." -ForegroundColor Green
+} else {
+    Write-Host ""
+    Write-Host "The push didn't finish cleanly -- scroll up for git's error message and send it to me." -ForegroundColor Red
+}
