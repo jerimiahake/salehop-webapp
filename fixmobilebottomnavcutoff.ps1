@@ -1,4 +1,34 @@
-﻿@import url('https://fonts.googleapis.com/css2?family=Permanent+Marker&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,500&family=JetBrains+Mono:wght@500;700&display=swap');
+﻿# Fix: on phones, the bottom nav bar (Browse/Map/Post/Saved/Account) was
+# getting cut off below the fold, requiring an awkward page-scroll to reach
+# it. Root cause: the page's outer <body> was sized with "min-height: 100vh",
+# which on mobile browsers measures the viewport as if the address bar were
+# fully collapsed -- taller than what's actually visible when the address
+# bar is showing. That made the whole page taller than the visible screen
+# and pushed the bottom nav down past it. The app frame itself already used
+# the correct "100dvh" (real visible height); this fix applies the same unit
+# to <body> so the two agree.
+#
+# App code only -- no database changes needed for this one.
+#
+# Safe to re-run if something fails partway through.
+
+$projectPath = "C:\Users\Bastian\Documents\WebDesign\SaleHop-app\salehopproject\salehop"
+
+Write-Host "Moving into $projectPath ..." -ForegroundColor Cyan
+if (-not (Test-Path $projectPath)) {
+    Write-Host "ERROR: That folder doesn't exist. Double-check the path and edit it at the top of this script." -ForegroundColor Red
+    exit 1
+}
+Set-Location $projectPath
+
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Write-Host "ERROR: git isn't installed (or not on PATH)." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "Writing app\globals.css ..." -ForegroundColor Cyan
+@'
+@import url('https://fonts.googleapis.com/css2?family=Permanent+Marker&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,500&family=JetBrains+Mono:wght@500;700&display=swap');
 
 :root {
   --paper: #FAF6EC;
@@ -355,3 +385,26 @@ textarea { resize: vertical; min-height: 80px; }
   border-left: 5px solid var(--green); pointer-events: none;
 }
 .toast.show { transform: translateY(0); opacity: 1; }
+'@ | Set-Content -Encoding UTF8 "app\globals.css"
+
+Write-Host "Staging, committing, and pushing ..." -ForegroundColor Cyan
+git add .
+git commit -m "Fix: bottom nav cut off on mobile browsers (100vh vs 100dvh body height mismatch)"
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "If that failed with 'Please tell me who you are', run these two lines (with your info) then re-run this script:" -ForegroundColor Yellow
+    Write-Host '  git config --global user.email "you@example.com"' -ForegroundColor Yellow
+    Write-Host '  git config --global user.name "Your Name"' -ForegroundColor Yellow
+    exit 1
+}
+
+git push
+
+if ($LASTEXITCODE -eq 0) {
+    Write-Host ""
+    Write-Host "Done! Once Vercel finishes deploying, refresh salehop.app on your phone (a hard refresh / close-and-reopen the tab helps, since your phone may have the old CSS cached) -- the bottom nav bar should now sit fully in view without needing to scroll the page." -ForegroundColor Green
+} else {
+    Write-Host ""
+    Write-Host "The push didn't finish cleanly -- scroll up for git's error message and send it to me." -ForegroundColor Red
+}
