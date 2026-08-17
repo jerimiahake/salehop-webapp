@@ -1,0 +1,252 @@
+﻿.loginWrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.loginCard {
+  width: 100%;
+  max-width: 360px;
+  background: #fff;
+  border: 1px solid #e2ddcf;
+  border-radius: 14px;
+  padding: 28px 26px;
+  box-shadow: 0 10px 30px rgba(32, 28, 22, 0.08);
+}
+
+.loginCard h1 {
+  margin: 0 0 6px;
+  font-size: 20px;
+  color: #201c16;
+}
+
+.wrap {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  color: #201c16;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.header h1 {
+  font-size: 22px;
+  margin: 0;
+}
+
+.hint {
+  font-size: 13px;
+  color: #5a5346;
+  margin: 0 0 16px;
+}
+
+.error {
+  font-size: 12.5px;
+  color: #d64545;
+  margin: 10px 0 0;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  border: 1.5px solid #d8cdaa;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  color: #201c16;
+  background: #fff;
+  outline: none;
+  margin-bottom: 10px;
+  box-sizing: border-box;
+}
+
+.input:focus,
+.textarea:focus {
+  border-color: #e0a020;
+}
+
+.textarea {
+  min-height: 70px;
+  resize: vertical;
+}
+
+.button {
+  background: #f4b93c;
+  color: #201c16;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 13.5px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.buttonSecondary {
+  background: #eee7d3;
+  color: #201c16;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 13.5px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.linkButton {
+  background: none;
+  border: none;
+  color: #5a5346;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 8px;
+  font-family: inherit;
+  text-decoration: underline;
+}
+
+.linkButtonDanger {
+  composes: linkButton;
+  color: #d64545;
+}
+
+.banner {
+  background: #e4f0e6;
+  border: 1px solid #bcdac1;
+  color: #2f5136;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.bannerError {
+  background: #fbe8e8;
+  border: 1px solid #f0bcbc;
+  color: #8a2a2a;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.filterBtn {
+  background: #fff;
+  border: 1.5px solid #d8cdaa;
+  color: #5a5346;
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.filterBtnActive {
+  background: #201c16;
+  border-color: #201c16;
+  color: #f4b93c;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.row {
+  background: #fff;
+  border: 1px solid #e2ddcf;
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.rowMain {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.rowTitle {
+  font-weight: 700;
+  font-size: 14.5px;
+  margin: 0 0 3px;
+}
+
+.rowSub {
+  font-size: 12.5px;
+  color: #5a5346;
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+.badge_pending {
+  background: #f6e5b8;
+  color: #7a5b13;
+}
+
+.badge_approved {
+  background: #d9ecdb;
+  color: #2f5136;
+}
+
+.badge_rejected {
+  background: #f6d6d6;
+  color: #8a2a2a;
+}
+
+.editForm {
+  width: 100%;
+}
+
+.editRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}

@@ -1,15 +1,17 @@
-# SaleHop
+﻿# SaleHop
 
 A mobile-first garage sale finder: browse and search sales near you, drop
 pins on a map, build a route by favoriting stops, export that route straight
-into Google Maps or Apple Maps, and post your own sale through a
-moderated submission form.
+into Google Maps or Apple Maps, and post your own sale through a moderated
+submission form. Sellers sign in (passwordless, via a magic-link email) to
+manage their own listings, and a password-protected `/admin` dashboard is
+where you moderate everything.
 
 Built with:
 - **Next.js** (React) for the app itself
-- **Supabase** (free tier) for the database, photo storage, and admin panel
+- **Supabase** (free tier) for the database, photo storage, auth, and the service-role connection behind `/admin`
 - **Leaflet + OpenStreetMap** for the map (free, no API key/billing)
-- **Nominatim** (OpenStreetMap) for turning a posted address into map coordinates (free, no API key)
+- **Nominatim** (OpenStreetMap) for geocoding and as-you-type address suggestions (free, no API key)
 
 Total cost to run this: **$0**, aside from your domain name, until you outgrow Supabase's free tier (500MB database, 1GB file storage, 50k monthly active users -- generous for a local/regional garage sale site).
 
@@ -24,60 +26,72 @@ npm run dev
 
 Open http://localhost:3000. Without any further setup, the app runs on
 built-in sample data (`lib/sampleData.js`) so you can click around
-immediately -- Browse, Map, Post, and Saved all work, though posting a sale
-in this mode won't actually save anywhere (you'll see a note that it's in
-preview mode).
+immediately -- Browse, Map, and Saved all work. Post and Account require a
+real Supabase connection (step 2) since they need somewhere to sign in
+against.
 
-> **Note on this build:** this project was scaffolded in a sandboxed
-> environment that couldn't reach the npm registry, so `npm install` /
-> `npm run dev` have not actually been executed yet. Every file was written
-> carefully and the non-UI logic (the Google/Apple Maps route export and the
-> date/time helpers) was independently tested and confirmed correct, but the
-> very first real build of the full app will happen when you run the
-> commands above (or when Vercel builds it in step 3). If anything doesn't
-> compile, paste the error back to me and I'll fix it immediately.
-
-## 2. Connect Supabase (free) -- this is your database + admin panel
+## 2. Connect Supabase (free) -- this is your database, auth, and (with the admin panel) moderation backend
 
 1. Go to https://supabase.com, sign up free, and create a new project.
-2. Once it's ready, open **SQL Editor** in the left sidebar, paste in the
-   entire contents of `supabase/schema.sql` from this project, and click
-   **Run**. This creates the `sales` table, sets up the security rules, and
-   creates a `sale-photos` storage bucket.
-3. Open **Project Settings -> API**. Copy the **Project URL** and the
-   **anon / public** key.
-4. In this project, copy `.env.local.example` to a new file named
-   `.env.local`, and paste those two values in:
-   ```
-   NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-public-key
-   ```
-5. Restart `npm run dev`. The app now reads/writes real data.
+2. Open **SQL Editor** in the left sidebar. Run these two files, in order,
+   pasting each one's full contents and clicking **Run**:
+   - `supabase/schema.sql` -- creates the `sales` table, base security
+     rules, and the `sale-photos` storage bucket.
+   - `supabase/schema-v2-accounts.sql` -- adds seller accounts: links each
+     sale to the account that posted it, lets sellers view/edit/delete
+     their own listings, and blocks a seller from self-approving a listing
+     (only the admin panel's service-role connection can change `status`).
+3. Open **Project Settings -> API**. You'll need three values from here:
+   - **Project URL**
+   - **anon / public** key (safe to expose to visitors' browsers)
+   - **service_role / secret** key (full database access -- treat this like
+     a master password; it's only ever used server-side, never sent to a
+     browser)
+4. Open **Authentication -> URL Configuration** and set:
+   - **Site URL**: your production URL (e.g. `https://salehop.app`)
+   - **Redirect URLs**: add `https://salehop.app/**` (and, while testing
+     locally, `http://localhost:3000/**`)
 
-### This is your admin panel
+   This is what makes the magic-link sign-in email land back on your actual
+   site instead of somewhere unexpected.
+5. In this project, copy `.env.local.example` to a new file named
+   `.env.local`, and fill in all five values (see that file for exactly
+   which env var each one goes in).
+6. Restart `npm run dev`. The app now reads/writes real data, and Post/
+   Account will work.
 
-Anyone can submit a sale from the Post tab -- it's inserted with
-`status = 'pending'` and is **not shown publicly** until you approve it.
+### Seller accounts ("My Listings")
 
-To moderate: in the Supabase dashboard, go to **Table Editor -> sales**.
-Each row has a `status` column. Change it to `approved` to publish the
-listing, or `rejected` to keep it hidden. That's it -- no separate admin
-app needed. You can also edit any field, delete spam, or export everything
-to CSV right from that screen.
+Posting a sale requires signing in first -- tap **Account**, enter an
+email, and a one-click sign-in link is emailed (no password to create or
+remember). Once signed in, sellers see their own listings under **Account**
+regardless of status, and can **Edit** or **Delete** them at any time. Edits
+go live immediately without needing re-approval.
 
-If you later want a nicer in-app "Approve / Reject" button screen instead
-of using the Supabase table view, that's a small addition I can build on
-top of this whenever you want it.
+### The admin panel
+
+New listings are inserted with `status = 'pending'` and aren't shown
+publicly until approved. Moderate at **`https://your-site/admin`**,
+protected by the `ADMIN_PASSWORD` you set below. From there you can filter
+by status, Approve/Reject with one click, Edit any field, or permanently
+Delete a listing (including its uploaded photos). The Supabase Table Editor
+still works too, as a fallback -- both talk to the same table.
 
 ## 3. Deploy (free) -- Vercel
 
 1. Push this project to a GitHub repo (Vercel deploys straight from GitHub).
 2. Go to https://vercel.com, sign up free, and click **Add New -> Project**,
    then import that repo.
-3. In the project's **Environment Variables** settings, add the same two
-   variables from your `.env.local`:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+3. In the project's **Environment Variables** settings, add:
+   - `NEXT_PUBLIC_SUPABASE_URL` -- Supabase Project URL
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` -- Supabase anon/public key
+   - `SUPABASE_SERVICE_ROLE_KEY` -- Supabase service_role/secret key
+     (**no** `NEXT_PUBLIC_` prefix -- this one must stay server-only)
+   - `ADMIN_PASSWORD` -- whatever password you want to log into `/admin` with
+   - `ADMIN_SESSION_SECRET` -- a long random string used to sign the admin
+     login cookie (not a password you need to remember -- generate one and
+     paste it in, e.g. from https://1password.com/password-generator or
+     any "random string generator," 40+ characters)
 4. Deploy. Vercel gives you a free `*.vercel.app` URL immediately.
 
 ## 4. Connect your domain
@@ -93,6 +107,9 @@ top of this whenever you want it.
 4. DNS changes can take a few minutes to a few hours to take effect.
    Vercel issues HTTPS automatically once it verifies the domain -- which
    matters here since `.app` domains require HTTPS to load at all.
+5. Double check step 2.4 above (Supabase's Site URL / Redirect URLs) point
+   at this same domain, or magic-link emails will send people to the wrong
+   place.
 
 ## 5. Adjust the map's default center
 
@@ -105,33 +122,35 @@ visitors before geolocation kicks in.
 
 ## What's already built
 
-- **Browse** -- searchable, day-filtered (Fri/Sat/Sun) list of approved
-  sales, sorted by distance from the visitor (uses browser geolocation,
-  with a graceful fallback if it's denied).
+- **Browse** -- searchable list of approved sales for the next 7 days
+  (Today, Tomorrow, then day names), sorted by distance from the visitor.
 - **Map** -- Leaflet map with custom pins matching the original mockup's
   hand-lettered sign style, tap-to-preview cards, and a route line between
   favorited stops.
-- **Post** -- title, address (auto-geocoded to a map pin on submit), date
-  (quick Fri/Sat/Sun or a custom date), hours, category tags, up to 6
-  photos, and a description. Submissions are held for approval.
+- **Post** -- title, address (as-you-type suggestions plus auto-geocoding
+  to a map pin), date, hours, category tags, up to 6 photos, and a
+  description. Requires signing in; submissions are held for approval.
+- **Account** -- passwordless (magic-link) sign in, and a "My Listings"
+  view to edit or delete your own sales.
 - **Saved** -- your favorited stops (stored in your browser, no account
-  needed), reorderable with up/down controls, with a mini route map and
-  **"Open in Google Maps" / "Open in Apple Maps"** buttons that hand your
-  whole multi-stop route to the maps app in one tap (`lib/mapsExport.js`).
-  Routes are capped at 10 stops, which is what Google's free routing URL
-  supports without an API key/billing.
+  needed for this part), reorderable with up/down controls, with a mini
+  route map and **"Open in Google Maps" / "Open in Apple Maps"** buttons
+  (`lib/mapsExport.js`, capped at 10 stops per Google's free routing URL).
+- **/admin** -- password-protected dashboard to Approve/Reject/Edit/Delete
+  any listing.
 - Installable as a home-screen app (`manifest.json` + icons) as a stepping
-  stone toward a full native app later -- the same Supabase backend can
-  serve a React Native or Capacitor-wrapped version down the road without
-  any backend changes.
+  stone toward a full native app later.
 
 ## What's intentionally simple for v1 (and easy to extend)
 
-- No user accounts -- posting doesn't require signing up, and "favorites"
-  live in the visitor's own browser rather than syncing across devices.
-  Supabase Auth can be added later without restructuring anything.
-- Moderation is the Supabase Table Editor rather than a custom "Approve"
-  button inside the app -- fully functional, just not custom-branded.
+- The admin password is a single shared secret, not a full user-role
+  system -- fine for one admin (you); if you ever want multiple admin
+  logins with individual passwords, that's a bigger change (Supabase Auth
+  + an `is_admin` flag) I can build when it's actually needed.
 - Photo storage has no automatic resizing/compression yet; large photo
   uploads will use more of Supabase's free storage tier faster than
   compressed ones would.
+- Supabase's default email sending (used for magic links) is rate-limited
+  on the free tier -- fine for a small local site's volume, but if sign-in
+  emails ever start feeling slow or capped, connecting a custom SMTP
+  provider in Supabase's Auth settings removes that limit.
