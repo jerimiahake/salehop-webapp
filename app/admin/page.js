@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import styles from './admin.module.css';
+import ListingForm from '@/components/ListingForm';
+import AdForm from '@/components/AdForm';
 
 const STATUS_FILTERS = ['all', 'pending', 'approved', 'rejected'];
 
@@ -20,10 +22,24 @@ export default function AdminPage() {
   const [editDraft, setEditDraft] = useState(null);
   const [message, setMessage] = useState(null);
 
+  // "addListing" | "addAd" | null -- only one creation panel open at a time.
+  const [activePanel, setActivePanel] = useState(null);
+
+  const [ads, setAds] = useState([]);
+  const [adsLoading, setAdsLoading] = useState(false);
+  const [adsError, setAdsError] = useState(null);
+  const [editingAdId, setEditingAdId] = useState(null);
+  const [editAdDraft, setEditAdDraft] = useState(null);
+
   useEffect(() => {
     loadSales();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (authed) loadAds();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed]);
 
   async function loadSales() {
     setLoading(true);
@@ -43,6 +59,22 @@ export default function AdminPage() {
     } finally {
       setAuthChecked(true);
       setLoading(false);
+    }
+  }
+
+  async function loadAds() {
+    setAdsLoading(true);
+    setAdsError(null);
+    try {
+      const res = await fetch('/api/admin/ads');
+      if (res.status === 401) return;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load ads.');
+      setAds(data);
+    } catch (err) {
+      setAdsError(err.message);
+    } finally {
+      setAdsLoading(false);
     }
   }
 
@@ -71,6 +103,7 @@ export default function AdminPage() {
     await fetch('/api/admin/logout', { method: 'POST' });
     setAuthed(false);
     setSales([]);
+    setAds([]);
   }
 
   async function updateSale(id, updates) {
@@ -145,6 +178,67 @@ export default function AdminPage() {
     }
   }
 
+  // ---------- Ads ----------
+  async function updateAd(id, updates) {
+    const res = await fetch(`/api/admin/ads/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Update failed.');
+    return data;
+  }
+
+  async function toggleAdActive(ad) {
+    try {
+      const updated = await updateAd(ad.id, { active: !ad.active });
+      setAds((list) => list.map((a) => (a.id === ad.id ? updated : a)));
+      setMessage(`${updated.active ? 'Activated' : 'Deactivated'} "${updated.title}".`);
+    } catch (err) {
+      setMessage(`Couldn't update: ${err.message}`);
+    }
+  }
+
+  async function handleDeleteAd(ad) {
+    if (!window.confirm(`Permanently delete the ad "${ad.title}"? This can't be undone.`)) return;
+    try {
+      const res = await fetch(`/api/admin/ads/${ad.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Delete failed.');
+      setAds((list) => list.filter((a) => a.id !== ad.id));
+      setMessage(`Deleted ad "${ad.title}".`);
+    } catch (err) {
+      setMessage(`Couldn't delete: ${err.message}`);
+    }
+  }
+
+  function startEditAd(ad) {
+    setEditingAdId(ad.id);
+    setEditAdDraft({
+      title: ad.title,
+      description: ad.description || '',
+      link_url: ad.link_url,
+      sponsor_name: ad.sponsor_name || '',
+    });
+  }
+
+  function cancelEditAd() {
+    setEditingAdId(null);
+    setEditAdDraft(null);
+  }
+
+  async function saveEditAd(ad) {
+    try {
+      const updated = await updateAd(ad.id, editAdDraft);
+      setAds((list) => list.map((a) => (a.id === ad.id ? updated : a)));
+      setMessage(`Saved changes to "${updated.title}".`);
+      cancelEditAd();
+    } catch (err) {
+      setMessage(`Couldn't save: ${err.message}`);
+    }
+  }
+
   const filteredSales = filter === 'all' ? sales : sales.filter((s) => s.status === filter);
   const counts = STATUS_FILTERS.reduce((acc, key) => {
     acc[key] = key === 'all' ? sales.length : sales.filter((s) => s.status === key).length;
@@ -186,13 +280,55 @@ export default function AdminPage() {
     <div className={styles.wrap}>
       <header className={styles.header}>
         <h1>SaleHop Admin</h1>
-        <button type="button" className={styles.linkButton} onClick={handleLogout}>
-          Sign Out
-        </button>
+        <div className={styles.headerActions}>
+          <button
+            type="button"
+            className={styles.buttonSecondary}
+            onClick={() => setActivePanel(activePanel === 'addListing' ? null : 'addListing')}
+          >
+            {activePanel === 'addListing' ? 'Close' : '+ Add Listing'}
+          </button>
+          <button
+            type="button"
+            className={styles.buttonSecondary}
+            onClick={() => setActivePanel(activePanel === 'addAd' ? null : 'addAd')}
+          >
+            {activePanel === 'addAd' ? 'Close' : '+ Add Ad'}
+          </button>
+          <button type="button" className={styles.linkButton} onClick={handleLogout}>
+            Sign Out
+          </button>
+        </div>
       </header>
 
       {message && <div className={styles.banner}>{message}</div>}
       {loadError && <div className={styles.bannerError}>{loadError}</div>}
+
+      {activePanel === 'addListing' && (
+        <div className={styles.listingFormWrap}>
+          <ListingForm
+            mode="admin-create"
+            onCancel={() => setActivePanel(null)}
+            onDone={(msg) => {
+              setActivePanel(null);
+              setMessage(msg);
+              loadSales();
+            }}
+          />
+        </div>
+      )}
+
+      {activePanel === 'addAd' && (
+        <AdForm
+          styles={styles}
+          onCancel={() => setActivePanel(null)}
+          onCreated={(ad) => {
+            setAds((list) => [ad, ...list]);
+            setActivePanel(null);
+            setMessage(`Created ad "${ad.title}".`);
+          }}
+        />
+      )}
 
       <div className={styles.filters}>
         {STATUS_FILTERS.map((key) => (
@@ -273,6 +409,7 @@ export default function AdminPage() {
                     <p className={styles.rowSub}>{sale.address}</p>
                     <p className={styles.rowSub}>
                       {sale.sale_date} · {(sale.start_time || '').slice(0, 5)}–{(sale.end_time || '').slice(0, 5)}
+                      {sale.is_neighborhood_sale && sale.neighborhood_name ? ` · 🏘️ ${sale.neighborhood_name}` : ''}
                     </p>
                   </div>
                 </div>
@@ -291,6 +428,80 @@ export default function AdminPage() {
                     Edit
                   </button>
                   <button type="button" className={styles.linkButtonDanger} onClick={() => handleDelete(sale)}>
+                    Delete
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <h2 className={styles.sectionHeading}>Ads</h2>
+
+      {adsError && <div className={styles.bannerError}>{adsError}</div>}
+      {adsLoading && <p className={styles.hint}>Loading ads…</p>}
+      {!adsLoading && ads.length === 0 && (
+        <p className={styles.hint}>No ads yet. Use &ldquo;+ Add Ad&rdquo; above to create one.</p>
+      )}
+
+      <div className={styles.list}>
+        {ads.map((ad) => (
+          <div className={styles.row} key={ad.id}>
+            {editingAdId === ad.id ? (
+              <div className={styles.editForm}>
+                <input
+                  className={styles.input}
+                  value={editAdDraft.title}
+                  onChange={(e) => setEditAdDraft((d) => ({ ...d, title: e.target.value }))}
+                  placeholder="Title"
+                />
+                <textarea
+                  className={styles.textarea}
+                  value={editAdDraft.description}
+                  onChange={(e) => setEditAdDraft((d) => ({ ...d, description: e.target.value }))}
+                  placeholder="Description"
+                />
+                <input
+                  className={styles.input}
+                  value={editAdDraft.link_url}
+                  onChange={(e) => setEditAdDraft((d) => ({ ...d, link_url: e.target.value }))}
+                  placeholder="Link URL"
+                />
+                <input
+                  className={styles.input}
+                  value={editAdDraft.sponsor_name}
+                  onChange={(e) => setEditAdDraft((d) => ({ ...d, sponsor_name: e.target.value }))}
+                  placeholder="Sponsor name"
+                />
+                <div className={styles.actions}>
+                  <button type="button" className={styles.button} onClick={() => saveEditAd(ad)}>
+                    Save
+                  </button>
+                  <button type="button" className={styles.linkButton} onClick={cancelEditAd}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className={styles.rowMain}>
+                  <span className={`${styles.badge} ${ad.active ? styles.badge_approved : styles.badge_rejected}`}>
+                    {ad.active ? 'active' : 'inactive'}
+                  </span>
+                  <div>
+                    <p className={styles.rowTitle}>{ad.title}</p>
+                    <p className={styles.rowSub}>{ad.sponsor_name ? `Sponsored by ${ad.sponsor_name}` : ad.link_url}</p>
+                  </div>
+                </div>
+                <div className={styles.actions}>
+                  <button type="button" className={styles.button} onClick={() => toggleAdActive(ad)}>
+                    {ad.active ? 'Deactivate' : 'Activate'}
+                  </button>
+                  <button type="button" className={styles.linkButton} onClick={() => startEditAd(ad)}>
+                    Edit
+                  </button>
+                  <button type="button" className={styles.linkButtonDanger} onClick={() => handleDeleteAd(ad)}>
                     Delete
                   </button>
                 </div>
