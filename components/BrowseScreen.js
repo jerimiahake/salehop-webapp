@@ -82,6 +82,13 @@ export default function BrowseScreen({
         <div className="count-row">
           <b>{sales.length}</b>&nbsp;sale{sales.length === 1 ? '' : 's'} near you
         </div>
+        {searchQuery && (
+          <div className="clear-filter-row">
+            <button type="button" className="clear-filter-pill" onClick={() => onSearch('')}>
+              ✕ Show All Sales
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="list-scroll">

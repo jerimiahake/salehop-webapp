@@ -1,4 +1,178 @@
-﻿@import url('https://fonts.googleapis.com/css2?family=Permanent+Marker&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,500&family=JetBrains+Mono:wght@500;700&display=swap');
+﻿# Fix: the "back out of neighborhood sales" clear button from last round
+# wasn't reliably showing up. Root cause: the search box's <input> used
+# "width: 100%" inside a flex row, which -- once a third item (the clear
+# button) was added -- could shrink/hide that button, especially once a
+# long neighborhood name filled the box. Fixed the CSS, and added a much
+# more obvious "Show All Sales" pill under the sale count whenever a
+# filter (typed search OR a tapped neighborhood badge) is active, so
+# there are two clear ways back to the full list.
+#
+# No database changes needed for this one -- app code only.
+#
+# Safe to re-run if something fails partway through.
+
+$projectPath = "C:\Users\Bastian\Documents\WebDesign\SaleHop-app\salehopproject\salehop"
+
+Write-Host "Moving into $projectPath ..." -ForegroundColor Cyan
+if (-not (Test-Path $projectPath)) {
+    Write-Host "ERROR: That folder doesn't exist. Double-check the path and edit it at the top of this script." -ForegroundColor Red
+    exit 1
+}
+Set-Location $projectPath
+
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Write-Host "ERROR: git isn't installed (or not on PATH)." -ForegroundColor Red
+    exit 1
+}
+
+New-Item -ItemType Directory -Force -Path "components" | Out-Null
+
+Write-Host "Writing components\BrowseScreen.js ..." -ForegroundColor Cyan
+@'
+'use client';
+
+import SaleCard from './SaleCard';
+import AdCard from './AdCard';
+
+// How often an ad card appears in the scrolling list -- every 4th real
+// listing. Ads never appear if there are zero matching sales (nothing to
+// interleave between), so a slow day never turns into an ads-only list.
+const AD_INTERVAL = 4;
+
+function buildFeed(sales, ads) {
+  const feed = sales.map((sale) => ({ type: 'sale', sale }));
+  if (!ads || ads.length === 0 || sales.length === 0) return feed;
+
+  const withAds = [];
+  let adIdx = 0;
+  feed.forEach((item, i) => {
+    withAds.push(item);
+    if ((i + 1) % AD_INTERVAL === 0) {
+      withAds.push({ type: 'ad', ad: ads[adIdx % ads.length], key: `ad-${i}` });
+      adIdx += 1;
+    }
+  });
+  return withAds;
+}
+
+export default function BrowseScreen({
+  sales,
+  ads,
+  loading,
+  loadError,
+  dayOptions,
+  selectedDates,
+  onToggleDate,
+  searchQuery,
+  onSearch,
+  favorites,
+  onToggleFavorite,
+  onOpenSale,
+}) {
+  let routeIdx = 0;
+  const feed = buildFeed(sales, ads);
+
+  return (
+    <>
+      <div className="header">
+        <div className="header-row">
+          <div className="logo marker-font">
+            Sale<span>Hop</span>
+          </div>
+          <div className="icon-btn">🔔</div>
+        </div>
+        <div className="search">
+          🔍{' '}
+          <input
+            placeholder="Search neighborhood or address…"
+            value={searchQuery}
+            onChange={(e) => onSearch(e.target.value)}
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              className="search-clear"
+              onClick={() => onSearch('')}
+              aria-label="Clear search"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        <div className="day-pills">
+          {dayOptions.map((opt) => (
+            <div
+              key={opt.date}
+              className={`pill ${selectedDates.includes(opt.date) ? 'active' : ''}`}
+              onClick={() => onToggleDate(opt.date)}
+            >
+              {opt.label}
+            </div>
+          ))}
+        </div>
+        <div className="count-row">
+          <b>{sales.length}</b>&nbsp;sale{sales.length === 1 ? '' : 's'} near you
+        </div>
+        {searchQuery && (
+          <div className="clear-filter-row">
+            <button type="button" className="clear-filter-pill" onClick={() => onSearch('')}>
+              ✕ Show All Sales
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="list-scroll">
+        <div className="sidebar-label">Nearby Sales — Sorted by Distance</div>
+
+        {loading && <div className="empty-state">Loading nearby sales…</div>}
+
+        {!loading && loadError && (
+          <div className="empty-state">
+            <div className="big">⚠️</div>
+            Couldn&apos;t load sales right now.
+            <br />
+            {loadError}
+          </div>
+        )}
+
+        {!loading && !loadError && sales.length === 0 && (
+          <div className="empty-state">
+            <div className="big">🧭</div>
+            No sales posted for this day yet. Be the first — tap the + button below.
+          </div>
+        )}
+
+        {!loading &&
+          !loadError &&
+          feed.map((item) => {
+            if (item.type === 'ad') {
+              return <AdCard key={item.key} ad={item.ad} />;
+            }
+            const sale = item.sale;
+            const favorited = favorites.includes(sale.id);
+            if (favorited) routeIdx += 1;
+            return (
+              <SaleCard
+                key={sale.id}
+                sale={sale}
+                favorited={favorited}
+                routeNum={routeIdx}
+                onClick={() => onOpenSale(sale.id)}
+                onToggleFavorite={onToggleFavorite}
+                onFilterNeighborhood={onSearch}
+              />
+            );
+          })}
+      </div>
+    </>
+  );
+}
+'@ | Set-Content -Encoding UTF8 "components\BrowseScreen.js"
+
+Write-Host "Writing app\globals.css ..." -ForegroundColor Cyan
+@'
+@import url('https://fonts.googleapis.com/css2?family=Permanent+Marker&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,500&family=JetBrains+Mono:wght@500;700&display=swap');
 
 :root {
   --paper: #FAF6EC;
@@ -349,3 +523,26 @@ textarea { resize: vertical; min-height: 80px; }
   border-left: 5px solid var(--green); pointer-events: none;
 }
 .toast.show { transform: translateY(0); opacity: 1; }
+'@ | Set-Content -Encoding UTF8 "app\globals.css"
+
+Write-Host "Staging, committing, and pushing ..." -ForegroundColor Cyan
+git add .
+git commit -m "Fix: show all sales button wasn't reliably visible after tapping a neighborhood sale"
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "If that failed with 'Please tell me who you are', run these two lines (with your info) then re-run this script:" -ForegroundColor Yellow
+    Write-Host '  git config --global user.email "you@example.com"' -ForegroundColor Yellow
+    Write-Host '  git config --global user.name "Your Name"' -ForegroundColor Yellow
+    exit 1
+}
+
+git push
+
+if ($LASTEXITCODE -eq 0) {
+    Write-Host ""
+    Write-Host "Done! Once Vercel finishes deploying: tap a neighborhood-sale badge in Browse, and you should see a yellow 'Show All Sales' pill appear right under the sale count -- tap it (or the X in the search box) to get back to everything." -ForegroundColor Green
+} else {
+    Write-Host ""
+    Write-Host "The push didn't finish cleanly -- scroll up for git's error message and send it to me." -ForegroundColor Red
+}
