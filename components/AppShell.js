@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { sampleSales, MAP_CENTER } from '@/lib/sampleData';
-import { upcomingDateFor, distanceMiles } from '@/lib/format';
+import { nextNDays, distanceMiles, toDateKey } from '@/lib/format';
 import BrowseScreen from './BrowseScreen';
 import MapScreen from './MapScreen';
 import PostScreen from './PostScreen';
@@ -18,7 +18,8 @@ export default function AppShell() {
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
-  const [selectedDay, setSelectedDay] = useState('SAT');
+  const dayOptions = useMemo(() => nextNDays(7), []);
+  const [selectedDate, setSelectedDate] = useState(() => toDateKey(new Date()));
   const [searchQuery, setSearchQuery] = useState('');
   const [favorites, setFavorites] = useState([]);
   const [selectedSaleId, setSelectedSaleId] = useState(null);
@@ -117,17 +118,16 @@ export default function AppShell() {
   const referenceLocation = userLocation || MAP_CENTER;
 
   const filteredSales = useMemo(() => {
-    const targetDate = upcomingDateFor(selectedDay);
     const q = searchQuery.trim().toLowerCase();
     return sales
-      .filter((s) => s.sale_date === targetDate)
+      .filter((s) => s.sale_date === selectedDate)
       .filter((s) => {
         if (!q) return true;
         return s.title.toLowerCase().includes(q) || s.address.toLowerCase().includes(q);
       })
       .map((s) => ({ ...s, distance: distanceMiles(referenceLocation, s) }))
       .sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0));
-  }, [sales, selectedDay, searchQuery, referenceLocation]);
+  }, [sales, selectedDate, searchQuery, referenceLocation]);
 
   const favoritedSales = useMemo(
     () => favorites.map((id) => sales.find((s) => s.id === id)).filter(Boolean),
@@ -141,7 +141,7 @@ export default function AppShell() {
 
   function handlePublished(message) {
     setActiveScreen('browse');
-    showToast(message || '\ud83c\udf89 Thanks! Your sale was submitted and is awaiting a quick review before it goes live.');
+    showToast(message || 'ðŸŽ‰ Thanks! Your sale was submitted and is awaiting a quick review before it goes live.');
   }
 
   return (
@@ -153,8 +153,9 @@ export default function AppShell() {
             sales={filteredSales}
             loading={loading}
             loadError={loadError}
-            selectedDay={selectedDay}
-            onSelectDay={setSelectedDay}
+            dayOptions={dayOptions}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
             searchQuery={searchQuery}
             onSearch={setSearchQuery}
             favorites={favorites}

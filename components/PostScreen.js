@@ -1,16 +1,18 @@
 ﻿'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { geocodeAddress } from '@/lib/geocode';
-import { upcomingDateFor } from '@/lib/format';
+import { nextNDays } from '@/lib/format';
 
 const TAG_OPTIONS = ['Furniture', 'Kids', 'Tools', 'Vintage', 'Multi-Family', 'Books', 'Decor', 'Clothing'];
 
+// 'day' holds either one of the next-7-days date strings ('YYYY-MM-DD') or
+// the literal 'CUSTOM' sentinel, in which case 'customDate' holds the date.
 const emptyForm = {
   title: '',
   address: '',
-  day: 'FRI',
+  day: '',
   customDate: '',
   startTime: '09:00',
   endTime: '13:00',
@@ -19,7 +21,8 @@ const emptyForm = {
 };
 
 export default function PostScreen({ onCancel, onPublished, showToast }) {
-  const [form, setForm] = useState(emptyForm);
+  const dayOptions = useMemo(() => nextNDays(7), []);
+  const [form, setForm] = useState(() => ({ ...emptyForm, day: dayOptions[0]?.date || '' }));
   const [photos, setPhotos] = useState([]); // { file, previewUrl }
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -47,7 +50,7 @@ export default function PostScreen({ onCancel, onPublished, showToast }) {
   }
 
   function resetForm() {
-    setForm(emptyForm);
+    setForm({ ...emptyForm, day: dayOptions[0]?.date || '' });
     setPhotos([]);
   }
 
@@ -59,7 +62,7 @@ export default function PostScreen({ onCancel, onPublished, showToast }) {
       return;
     }
 
-    const saleDate = form.day === 'CUSTOM' ? form.customDate : upcomingDateFor(form.day);
+    const saleDate = form.day === 'CUSTOM' ? form.customDate : form.day;
     if (!saleDate) {
       setError('Please pick a date.');
       return;
@@ -80,7 +83,7 @@ export default function PostScreen({ onCancel, onPublished, showToast }) {
         // both would set the toast in the same tick and only the last one
         // would actually render, silently hiding this message.
         resetForm();
-        onPublished("Preview mode: Supabase isn't connected yet, so this wasn't actually saved. See the README to connect it.");
+        onPublished('Preview mode: Supabase isnâ€™t connected yet, so this wasnâ€™t actually saved. See the README to connect it.');
         return;
       }
 
@@ -157,15 +160,21 @@ export default function PostScreen({ onCancel, onPublished, showToast }) {
         <div className="field-group">
           <p className="field-label">Date</p>
           <div className="day-pills" style={{ marginTop: 0 }}>
-            {['FRI', 'SAT', 'SUN', 'CUSTOM'].map((d) => (
+            {dayOptions.map((opt) => (
               <div
-                key={d}
-                className={`pill ${form.day === d ? 'active' : ''}`}
-                onClick={() => update('day', d)}
+                key={opt.date}
+                className={`pill ${form.day === opt.date ? 'active' : ''}`}
+                onClick={() => update('day', opt.date)}
               >
-                {d === 'CUSTOM' ? 'Pick dateâ€¦' : d}
+                {opt.label}
               </div>
             ))}
+            <div
+              className={`pill ${form.day === 'CUSTOM' ? 'active' : ''}`}
+              onClick={() => update('day', 'CUSTOM')}
+            >
+              Pick dateâ€¦
+            </div>
           </div>
           {form.day === 'CUSTOM' && (
             <input
