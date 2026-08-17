@@ -24,12 +24,12 @@ export default function BrowseScreen({
           <div className="logo marker-font">
             Sale<span>Hop</span>
           </div>
-          <div className="icon-btn">ðŸ””</div>
+          <div className="icon-btn">🔔</div>
         </div>
         <div className="search">
-          ðŸ”{' '}
+          🔍{' '}
           <input
-            placeholder="Search neighborhood or addressâ€¦"
+            placeholder="Search neighborhood or address…"
             value={searchQuery}
             onChange={(e) => onSearch(e.target.value)}
           />
@@ -51,13 +51,13 @@ export default function BrowseScreen({
       </div>
 
       <div className="list-scroll">
-        <div className="sidebar-label">Nearby Sales â€” Sorted by Distance</div>
+        <div className="sidebar-label">Nearby Sales — Sorted by Distance</div>
 
-        {loading && <div className="empty-state">Loading nearby salesâ€¦</div>}
+        {loading && <div className="empty-state">Loading nearby sales…</div>}
 
         {!loading && loadError && (
           <div className="empty-state">
-            <div className="big">âš ï¸</div>
+            <div className="big">⚠️</div>
             Couldn&apos;t load sales right now.
             <br />
             {loadError}
@@ -66,8 +66,8 @@ export default function BrowseScreen({
 
         {!loading && !loadError && sales.length === 0 && (
           <div className="empty-state">
-            <div className="big">ðŸ§­</div>
-            No sales posted for this day yet. Be the first â€” tap the + button below.
+            <div className="big">🧭</div>
+            No sales posted for this day yet. Be the first — tap the + button below.
           </div>
         )}
 

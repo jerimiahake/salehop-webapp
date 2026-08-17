@@ -1,17 +1,26 @@
 ﻿'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
-import { geocodeAddress } from '@/lib/geocode';
+import { geocodeAddress, suggestAddress } from '@/lib/geocode';
 import { nextNDays } from '@/lib/format';
 
 const TAG_OPTIONS = ['Furniture', 'Kids', 'Tools', 'Vintage', 'Multi-Family', 'Books', 'Decor', 'Clothing'];
+
+// How long to wait after the user stops typing before asking for address
+// suggestions, and the minimum number of characters before we bother.
+// OpenStreetMap's free Nominatim geocoder (same one used to place the pin
+// on submit) asks apps not to fire a request on every keystroke, so this
+// stays deliberately gentle rather than instant.
+const SUGGEST_DEBOUNCE_MS = 700;
+const SUGGEST_MIN_LENGTH = 5;
 
 // 'day' holds either one of the next-7-days date strings ('YYYY-MM-DD') or
 // the literal 'CUSTOM' sentinel, in which case 'customDate' holds the date.
 const emptyForm = {
   title: '',
   address: '',
+  location: null, // { lat, lng } once a suggestion has been picked
   day: '',
   customDate: '',
   startTime: '09:00',
@@ -27,8 +36,99 @@ export default function PostScreen({ onCancel, onPublished, showToast }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const debounceRef = useRef(null);
+  const abortRef = useRef(null);
+  const addressWrapRef = useRef(null);
+
+  // Close the suggestions dropdown on outside click.
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (addressWrapRef.current && !addressWrapRef.current.contains(e.target)) {
+        setSuggestOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Cancel any in-flight timer/request if the screen unmounts mid-type.
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (abortRef.current) abortRef.current.abort();
+    };
+  }, []);
+
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  function handleAddressChange(value) {
+    // Typing invalidates any previously-picked suggestion -- address and
+    // location must travel together so we never save mismatched coordinates.
+    setForm((f) => ({ ...f, address: value, location: null }));
+    setHighlightedIndex(-1);
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (abortRef.current) abortRef.current.abort();
+
+    const trimmed = value.trim();
+    if (trimmed.length < SUGGEST_MIN_LENGTH) {
+      setSuggestions([]);
+      setSuggestOpen(false);
+      setSuggestLoading(false);
+      return;
+    }
+
+    setSuggestLoading(true);
+    debounceRef.current = setTimeout(async () => {
+      const controller = new AbortController();
+      abortRef.current = controller;
+      try {
+        const results = await suggestAddress(trimmed, controller.signal);
+        setSuggestions(results);
+        setSuggestOpen(results.length > 0);
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          setSuggestions([]);
+          setSuggestOpen(false);
+        }
+      } finally {
+        setSuggestLoading(false);
+      }
+    }, SUGGEST_DEBOUNCE_MS);
+  }
+
+  function pickSuggestion(s) {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (abortRef.current) abortRef.current.abort();
+    setForm((f) => ({ ...f, address: s.label, location: { lat: s.lat, lng: s.lng } }));
+    setSuggestions([]);
+    setSuggestOpen(false);
+    setSuggestLoading(false);
+    setHighlightedIndex(-1);
+  }
+
+  function handleAddressKeyDown(e) {
+    if (!suggestOpen || suggestions.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex((i) => (i + 1) % suggestions.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex((i) => (i <= 0 ? suggestions.length - 1 : i - 1));
+    } else if (e.key === 'Enter') {
+      if (highlightedIndex >= 0) {
+        e.preventDefault();
+        pickSuggestion(suggestions[highlightedIndex]);
+      }
+    } else if (e.key === 'Escape') {
+      setSuggestOpen(false);
+    }
   }
 
   function toggleTag(tag) {
@@ -70,7 +170,11 @@ export default function PostScreen({ onCancel, onPublished, showToast }) {
 
     setSubmitting(true);
     try {
-      const location = await geocodeAddress(form.address);
+      // If they picked one of the suggestions, we already know exactly
+      // where it is -- no need to geocode again. Otherwise (typed the whole
+      // address by hand and hit publish without picking a suggestion) fall
+      // back to the same one-shot geocode used before this feature existed.
+      const location = form.location || (await geocodeAddress(form.address));
       if (!location) {
         setError("We couldn't find that address on the map. Double-check it and try again.");
         setSubmitting(false);
@@ -83,7 +187,7 @@ export default function PostScreen({ onCancel, onPublished, showToast }) {
         // both would set the toast in the same tick and only the last one
         // would actually render, silently hiding this message.
         resetForm();
-        onPublished('Preview mode: Supabase isnâ€™t connected yet, so this wasnâ€™t actually saved. See the README to connect it.');
+        onPublished('Preview mode: Supabase isn’t connected yet, so this wasn’t actually saved. See the README to connect it.');
         return;
       }
 
@@ -130,7 +234,7 @@ export default function PostScreen({ onCancel, onPublished, showToast }) {
     <>
       <div className="post-header">
         <button type="button" className="icon-btn" onClick={onCancel} aria-label="Cancel">
-          âœ•
+          ✕
         </button>
         <div className="title">Post a Garage Sale</div>
       </div>
@@ -147,14 +251,44 @@ export default function PostScreen({ onCancel, onPublished, showToast }) {
         </div>
 
         <div className="field-group">
-          <p className="field-label">ðŸ“ Address</p>
-          <input
-            className="text-input"
-            placeholder="Street address"
-            value={form.address}
-            onChange={(e) => update('address', e.target.value)}
-          />
-          <p className="hint">We&apos;ll drop a pin here automatically once you publish.</p>
+          <p className="field-label">📍 Address</p>
+          <div className="address-field" ref={addressWrapRef}>
+            <input
+              className="text-input"
+              placeholder="Start typing your street address…"
+              value={form.address}
+              autoComplete="off"
+              onChange={(e) => handleAddressChange(e.target.value)}
+              onKeyDown={handleAddressKeyDown}
+              onFocus={() => {
+                if (suggestions.length > 0) setSuggestOpen(true);
+              }}
+            />
+            {suggestLoading && <div className="address-spinner" aria-hidden="true" />}
+
+            {suggestOpen && suggestions.length > 0 && (
+              <ul className="address-suggestions">
+                {suggestions.map((s, i) => (
+                  <li key={`${s.lat},${s.lng}`}>
+                    <button
+                      type="button"
+                      className={`address-suggestion ${i === highlightedIndex ? 'highlighted' : ''}`}
+                      onMouseDown={(e) => e.preventDefault()} // keep the input focused so onBlur doesn't fire first
+                      onClick={() => pickSuggestion(s)}
+                      onMouseEnter={() => setHighlightedIndex(i)}
+                    >
+                      {s.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          {form.location ? (
+            <p className="hint address-verified">✓ Address verified — we&apos;ll drop a pin here exactly.</p>
+          ) : (
+            <p className="hint">Pick a suggestion for the most accurate pin, or type the full address and we&apos;ll look it up when you publish.</p>
+          )}
         </div>
 
         <div className="field-group">
@@ -173,7 +307,7 @@ export default function PostScreen({ onCancel, onPublished, showToast }) {
               className={`pill ${form.day === 'CUSTOM' ? 'active' : ''}`}
               onClick={() => update('day', 'CUSTOM')}
             >
-              Pick dateâ€¦
+              Pick date…
             </div>
           </div>
           {form.day === 'CUSTOM' && (
@@ -229,13 +363,13 @@ export default function PostScreen({ onCancel, onPublished, showToast }) {
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={p.previewUrl} alt="" />
                 <button type="button" className="x" onClick={() => removePhoto(i)} aria-label="Remove photo">
-                  âœ•
+                  ✕
                 </button>
               </div>
             ))}
             {photos.length < 6 && (
               <label className="photo-add">
-                <span style={{ fontSize: 18 }}>ðŸ“·</span>
+                <span style={{ fontSize: 18 }}>📷</span>
                 <span>Add</span>
                 <input type="file" accept="image/*" multiple hidden onChange={addPhoto} />
               </label>
@@ -247,7 +381,7 @@ export default function PostScreen({ onCancel, onPublished, showToast }) {
         <div className="field-group">
           <p className="field-label">Description</p>
           <textarea
-            placeholder="What are you selling? Mention any big-ticket itemsâ€¦"
+            placeholder="What are you selling? Mention any big-ticket items…"
             value={form.description}
             onChange={(e) => update('description', e.target.value)}
           />
@@ -258,7 +392,7 @@ export default function PostScreen({ onCancel, onPublished, showToast }) {
 
       <div className="publish-bar">
         <button type="button" className="publish-btn" onClick={handleSubmit} disabled={submitting}>
-          {submitting ? 'Publishingâ€¦' : 'Publish Sale â†’'}
+          {submitting ? 'Publishing…' : 'Publish Sale →'}
         </button>
       </div>
     </>

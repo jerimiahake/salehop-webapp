@@ -141,7 +141,7 @@ export default function AppShell() {
 
   function handlePublished(message) {
     setActiveScreen('browse');
-    showToast(message || 'ðŸŽ‰ Thanks! Your sale was submitted and is awaiting a quick review before it goes live.');
+    showToast(message || '🎉 Thanks! Your sale was submitted and is awaiting a quick review before it goes live.');
   }
 
   return (
@@ -173,6 +173,7 @@ export default function AppShell() {
             favoritedSales={favoritedSales}
             onOpenSaved={() => setActiveScreen('saved')}
             center={referenceLocation}
+            active={activeScreen === 'map'}
           />
         </div>
         <div className={`screen ${activeScreen === 'post' ? 'active' : ''}`}>

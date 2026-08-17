@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Permanent+Marker&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,500&family=JetBrains+Mono:wght@500;700&display=swap');
+﻿@import url('https://fonts.googleapis.com/css2?family=Permanent+Marker&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,500&family=JetBrains+Mono:wght@500;700&display=swap');
 
 :root {
   --paper: #FAF6EC;
@@ -195,7 +195,28 @@ body {
 .text-input:focus, textarea:focus { border-color: var(--yellow-deep); }
 textarea { resize: vertical; min-height: 80px; }
 .hint { font-size: 11.5px; color: var(--ink-soft); margin-top: 5px; }
+.hint.address-verified { color: var(--green); font-weight: 600; }
 .error-hint { font-size: 11.5px; color: var(--red); margin-top: 5px; }
+
+.address-field { position: relative; }
+.address-spinner {
+  position: absolute; top: 50%; right: 13px; width: 14px; height: 14px; margin-top: -7px;
+  border: 2px solid var(--line); border-top-color: var(--yellow-deep); border-radius: 50%;
+  animation: address-spin 0.7s linear infinite;
+}
+@keyframes address-spin { to { transform: rotate(360deg); } }
+.address-suggestions {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 50;
+  background: #fff; border: 1.5px solid var(--line); border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(32,28,22,0.18); list-style: none; margin: 0; padding: 4px;
+  max-height: 220px; overflow-y: auto;
+}
+.address-suggestion {
+  display: block; width: 100%; text-align: left; background: none; border: none;
+  padding: 9px 10px; font-family: inherit; font-size: 13px; color: var(--ink);
+  border-radius: 7px; cursor: pointer; line-height: 1.35;
+}
+.address-suggestion.highlighted, .address-suggestion:hover { background: var(--tan); }
 .time-row { display: flex; gap: 10px; align-items: center; }
 .time-row .text-input { flex: 1; }
 .time-row .to { color: var(--ink-soft); font-size: 12.5px; font-weight: 700; }

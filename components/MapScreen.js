@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import dynamic from 'next/dynamic';
 import { formatTimeRange } from '@/lib/format';
@@ -21,6 +21,7 @@ export default function MapScreen({
   favoritedSales,
   onOpenSaved,
   center,
+  active = true,
 }) {
   const selectedSale = sales.find((s) => s.id === selectedSaleId);
 
@@ -32,6 +33,7 @@ export default function MapScreen({
         selectedSaleId={selectedSaleId}
         onSelectSale={onSelectSale}
         center={center}
+        active={active}
       />
 
       <div className="map-floating-row">

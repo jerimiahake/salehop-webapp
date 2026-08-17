@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet';
@@ -28,7 +28,27 @@ function Recenter({ center }) {
   return null;
 }
 
-export default function LeafletMap({ sales, favorites, selectedSaleId, onSelectSale, center, interactive = true }) {
+// Leaflet measures its container's size when it first mounts. Because all
+// four app screens stay mounted in the DOM (the inactive ones are just
+// `display: none`), the map can initialize while its parent is 0x0 and
+// permanently cache that wrong size -- rendering into a small corner even
+// after the Map tab becomes visible. Re-measuring with invalidateSize()
+// each time this tab becomes active fixes that.
+function InvalidateOnShow({ active }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!active) return undefined;
+    const raf1 = requestAnimationFrame(() => {
+      const raf2 = requestAnimationFrame(() => map.invalidateSize());
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      return () => cancelAnimationFrame(raf2);
+    });
+    return () => cancelAnimationFrame(raf1);
+  }, [active, map]);
+  return null;
+}
+
+export default function LeafletMap({ sales, favorites, selectedSaleId, onSelectSale, center, active = true, interactive = true }) {
   const routeStops = useMemo(
     () => favorites.map((id) => sales.find((s) => s.id === id)).filter((s) => s && Number.isFinite(s.lat)),
     [favorites, sales]
@@ -51,6 +71,7 @@ export default function LeafletMap({ sales, favorites, selectedSaleId, onSelectS
       keyboard={interactive}
     >
       <Recenter center={center} />
+      <InvalidateOnShow active={active} />
       <TileLayer
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
