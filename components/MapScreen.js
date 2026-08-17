@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import dynamic from 'next/dynamic';
-import { formatTimeRange } from '@/lib/format';
+import { formatTimeRange, formatDateRange } from '@/lib/format';
 
 const LeafletMap = dynamic(() => import('./LeafletMap'), {
   ssr: false,
@@ -49,6 +49,11 @@ export default function MapScreen({
             <p className="card-title">{selectedSale.title}</p>
             <p className="card-addr">{selectedSale.address}</p>
             <div className="card-meta">
+              {selectedSale.sale_date && (
+                <span className="time-badge mono">
+                  {formatDateRange(selectedSale.sale_date, selectedSale.end_date)}
+                </span>
+              )}
               <span className="time-badge mono">
                 {selectedSale.time || formatTimeRange(selectedSale.start_time, selectedSale.end_time)}
               </span>

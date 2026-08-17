@@ -30,8 +30,8 @@ export default function BrowseScreen({
   loading,
   loadError,
   dayOptions,
-  selectedDate,
-  onSelectDate,
+  selectedDates,
+  onToggleDate,
   searchQuery,
   onSearch,
   favorites,
@@ -57,13 +57,23 @@ export default function BrowseScreen({
             value={searchQuery}
             onChange={(e) => onSearch(e.target.value)}
           />
+          {searchQuery && (
+            <button
+              type="button"
+              className="search-clear"
+              onClick={() => onSearch('')}
+              aria-label="Clear search"
+            >
+              ✕
+            </button>
+          )}
         </div>
         <div className="day-pills">
           {dayOptions.map((opt) => (
             <div
               key={opt.date}
-              className={`pill ${selectedDate === opt.date ? 'active' : ''}`}
-              onClick={() => onSelectDate(opt.date)}
+              className={`pill ${selectedDates.includes(opt.date) ? 'active' : ''}`}
+              onClick={() => onToggleDate(opt.date)}
             >
               {opt.label}
             </div>

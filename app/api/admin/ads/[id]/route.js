@@ -2,7 +2,15 @@
 import { isAdminRequest } from '@/lib/adminAuth';
 import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabaseAdmin';
 
-const EDITABLE_FIELDS = ['title', 'description', 'image_url', 'link_url', 'sponsor_name', 'active'];
+const EDITABLE_FIELDS = [
+  'title',
+  'description',
+  'image_url',
+  'link_url',
+  'sponsor_name',
+  'active',
+  'html_snippet',
+];
 
 export async function PATCH(request, { params }) {
   if (!isAdminRequest(request)) {

@@ -10,6 +10,7 @@ const EDITABLE_FIELDS = [
   'lat',
   'lng',
   'sale_date',
+  'end_date',
   'start_time',
   'end_time',
   'tags',

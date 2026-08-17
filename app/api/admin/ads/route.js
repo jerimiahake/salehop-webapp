@@ -40,18 +40,28 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
   }
 
-  if (!body?.title || !body?.link_url) {
-    return NextResponse.json({ error: 'An ad needs at least a title and a link.' }, { status: 400 });
+  const adType = body?.ad_type === 'snippet' ? 'snippet' : 'image';
+
+  if (!body?.title) {
+    return NextResponse.json({ error: 'An ad needs a title.' }, { status: 400 });
+  }
+  if (adType === 'image' && !body?.link_url) {
+    return NextResponse.json({ error: 'An image ad needs a link.' }, { status: 400 });
+  }
+  if (adType === 'snippet' && !body?.html_snippet) {
+    return NextResponse.json({ error: 'A code-snippet ad needs the embed code.' }, { status: 400 });
   }
 
   const { data, error } = await supabaseAdmin
     .from('ads')
     .insert({
+      ad_type: adType,
       title: body.title,
       description: body.description || null,
-      image_url: body.image_url || null,
-      link_url: body.link_url,
-      sponsor_name: body.sponsor_name || null,
+      image_url: adType === 'image' ? body.image_url || null : null,
+      link_url: adType === 'image' ? body.link_url : null,
+      sponsor_name: adType === 'image' ? body.sponsor_name || null : null,
+      html_snippet: adType === 'snippet' ? body.html_snippet : null,
       active: true,
     })
     .select()

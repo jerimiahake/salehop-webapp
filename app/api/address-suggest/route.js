@@ -1,4 +1,5 @@
 ﻿import { NextResponse } from 'next/server';
+import { extractCity } from '@/lib/nominatimAddress';
 
 // Server-side proxy to OpenStreetMap's free Nominatim geocoder, used for
 // as-you-type address suggestions on the Post screen. Same host as
@@ -21,6 +22,7 @@ export async function GET(request) {
   nominatimUrl.searchParams.set('format', 'json');
   nominatimUrl.searchParams.set('q', query);
   nominatimUrl.searchParams.set('limit', '5');
+  nominatimUrl.searchParams.set('addressdetails', '1');
 
   const res = await fetch(nominatimUrl.toString(), {
     headers: {
@@ -41,6 +43,7 @@ export async function GET(request) {
     label: r.display_name,
     lat: parseFloat(r.lat),
     lng: parseFloat(r.lon),
+    city: extractCity(r.address),
   }));
 
   return NextResponse.json(suggestions);

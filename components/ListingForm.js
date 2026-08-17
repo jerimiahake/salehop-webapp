@@ -7,7 +7,10 @@ import { nextNDays } from '@/lib/format';
 import { SITE_URL } from '@/lib/site';
 import ShareToFacebookButton from './ShareToFacebookButton';
 
-const TAG_OPTIONS = ['Furniture', 'Kids', 'Tools', 'Vintage', 'Multi-Family', 'Books', 'Decor', 'Clothing'];
+// Used only if the "tags" table can't be reached (offline preview mode,
+// or a hiccup loading it) -- the real, admin-editable list normally comes
+// from Supabase (see the tagOptions state below).
+const DEFAULT_TAG_OPTIONS = ['Furniture', 'Kids', 'Tools', 'Vintage', 'Multi-Family', 'Books', 'Decor', 'Clothing'];
 
 // How long to wait after the user stops typing before asking for address
 // suggestions, and the minimum number of characters before we bother.
@@ -27,9 +30,12 @@ function blankForm(dayOptions) {
   return {
     title: '',
     address: '',
-    location: null, // { lat, lng } once a suggestion has been picked / verified
+    location: null, // { lat, lng, city } once a suggestion has been picked / verified
     day: dayOptions[0]?.date || '',
     customDate: '',
+    multiDay: false,
+    endDay: dayOptions[0]?.date || '',
+    endCustomDate: '',
     startTime: '09:00',
     endTime: '13:00',
     tags: [],
@@ -46,12 +52,18 @@ function blankForm(dayOptions) {
 function formFromSale(sale, dayOptions) {
   const dateKey = sale.sale_date;
   const inRange = dayOptions.some((opt) => opt.date === dateKey);
+  const hasEndDate = Boolean(sale.end_date && sale.end_date !== sale.sale_date);
+  const endDateKey = hasEndDate ? sale.end_date : dateKey;
+  const endInRange = dayOptions.some((opt) => opt.date === endDateKey);
   return {
     title: sale.title || '',
     address: sale.address || '',
     location: Number.isFinite(sale.lat) && Number.isFinite(sale.lng) ? { lat: sale.lat, lng: sale.lng } : null,
     day: inRange ? dateKey : 'CUSTOM',
     customDate: inRange ? '' : dateKey,
+    multiDay: hasEndDate,
+    endDay: endInRange ? endDateKey : 'CUSTOM',
+    endCustomDate: endInRange ? '' : endDateKey,
     startTime: (sale.start_time || '09:00').slice(0, 5),
     endTime: (sale.end_time || '13:00').slice(0, 5),
     tags: sale.tags || [],
@@ -88,6 +100,8 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
   const [error, setError] = useState(null);
   const [justCreated, setJustCreated] = useState(null); // { id, title, status, doneMessage } | null
 
+  const [tagOptions, setTagOptions] = useState(DEFAULT_TAG_OPTIONS);
+
   const [suggestions, setSuggestions] = useState([]);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestLoading, setSuggestLoading] = useState(false);
@@ -103,6 +117,28 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
   const neighborhoodWrapRef = useRef(null);
 
   const totalPhotoCount = photos.length + existingPhotoUrls.length;
+
+  // Category tags are managed from /admin rather than hardcoded, so this
+  // list can change without a code deploy. Falls back to the original
+  // built-in list if Supabase isn't reachable (offline preview mode, or a
+  // hiccup loading it) so the form never ends up with zero options.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let cancelled = false;
+
+    supabase
+      .from('tags')
+      .select('name')
+      .order('name', { ascending: true })
+      .then(({ data, error }) => {
+        if (cancelled || error || !data || data.length === 0) return;
+        setTagOptions(data.map((t) => t.name));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Close either suggestions dropdown on outside click.
   useEffect(() => {
@@ -171,7 +207,7 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
   function pickSuggestion(s) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (abortRef.current) abortRef.current.abort();
-    setForm((f) => ({ ...f, address: s.label, location: { lat: s.lat, lng: s.lng } }));
+    setForm((f) => ({ ...f, address: s.label, location: { lat: s.lat, lng: s.lng, city: s.city || null } }));
     setSuggestions([]);
     setSuggestOpen(false);
     setSuggestLoading(false);
@@ -269,8 +305,21 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
 
     const saleDate = form.day === 'CUSTOM' ? form.customDate : form.day;
     if (!saleDate) {
-      setError('Please pick a date.');
+      setError('Please pick a start date.');
       return;
+    }
+
+    let endDate = null;
+    if (form.multiDay) {
+      endDate = form.endDay === 'CUSTOM' ? form.endCustomDate : form.endDay;
+      if (!endDate) {
+        setError('Please pick an end date, or uncheck "runs multiple days".');
+        return;
+      }
+      if (endDate < saleDate) {
+        setError('The end date needs to be on or after the start date.');
+        return;
+      }
     }
 
     if (form.isNeighborhoodSale && !form.neighborhoodName.trim()) {
@@ -288,6 +337,20 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
         setError("We couldn't find that address on the map. Double-check it and try again.");
         setSubmitting(false);
         return;
+      }
+
+      // A neighborhood sale name is stored qualified with its town (e.g.
+      // "Boulder Creek, Lapel") so the same neighborhood name in two
+      // different towns doesn't get treated as one shared sale. Only
+      // appends if we actually resolved a city and the name doesn't
+      // already end with it (picking an existing suggestion already
+      // includes the city, typing a fresh name doesn't yet).
+      let neighborhoodName = form.isNeighborhoodSale ? form.neighborhoodName.trim() : null;
+      if (neighborhoodName && location.city) {
+        const alreadyQualified = neighborhoodName.toLowerCase().endsWith(location.city.toLowerCase());
+        if (!alreadyQualified) {
+          neighborhoodName = `${neighborhoodName}, ${location.city}`;
+        }
       }
 
       if (!isSupabaseConfigured) {
@@ -319,7 +382,6 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
       }
 
       const photoUrls = [...existingPhotoUrls, ...newPhotoUrls];
-      const neighborhoodName = form.isNeighborhoodSale ? form.neighborhoodName.trim() : null;
 
       if (isEdit) {
         const { error: updateError } = await supabase
@@ -330,6 +392,7 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
             lat: location.lat,
             lng: location.lng,
             sale_date: saleDate,
+            end_date: endDate,
             start_time: form.startTime,
             end_time: form.endTime,
             tags: form.tags,
@@ -356,6 +419,7 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
             lat: location.lat,
             lng: location.lng,
             sale_date: saleDate,
+            end_date: endDate,
             start_time: form.startTime,
             end_time: form.endTime,
             tags: form.tags,
@@ -383,6 +447,7 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
             lat: location.lat,
             lng: location.lng,
             sale_date: saleDate,
+            end_date: endDate,
             start_time: form.startTime,
             end_time: form.endTime,
             tags: form.tags,
@@ -564,7 +629,7 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
         </div>
 
         <div className="field-group">
-          <p className="field-label">Date</p>
+          <p className="field-label">Start Date</p>
           <div className="day-pills" style={{ marginTop: 0 }}>
             {dayOptions.map((opt) => (
               <div
@@ -591,6 +656,48 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
               onChange={(e) => update('customDate', e.target.value)}
             />
           )}
+
+          <label className="neighborhood-toggle" style={{ marginTop: 14 }}>
+            <input
+              type="checkbox"
+              checked={form.multiDay}
+              onChange={(e) => update('multiDay', e.target.checked)}
+            />
+            <span>📅 This sale runs multiple days</span>
+          </label>
+
+          {form.multiDay && (
+            <div style={{ marginTop: 12 }}>
+              <p className="field-label">End Date</p>
+              <div className="day-pills" style={{ marginTop: 0 }}>
+                {dayOptions.map((opt) => (
+                  <div
+                    key={opt.date}
+                    className={`pill ${form.endDay === opt.date ? 'active' : ''}`}
+                    onClick={() => update('endDay', opt.date)}
+                  >
+                    {opt.label}
+                  </div>
+                ))}
+                <div
+                  className={`pill ${form.endDay === 'CUSTOM' ? 'active' : ''}`}
+                  onClick={() => update('endDay', 'CUSTOM')}
+                >
+                  Pick date…
+                </div>
+              </div>
+              {form.endDay === 'CUSTOM' && (
+                <input
+                  type="date"
+                  className="text-input"
+                  style={{ marginTop: 10 }}
+                  value={form.endCustomDate}
+                  onChange={(e) => update('endCustomDate', e.target.value)}
+                />
+              )}
+              <p className="hint">Same hours apply to every day of the sale.</p>
+            </div>
+          )}
         </div>
 
         <div className="field-group">
@@ -615,7 +722,7 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
         <div className="field-group">
           <p className="field-label">Categories</p>
           <div className="chip-row">
-            {TAG_OPTIONS.map((tag) => (
+            {tagOptions.map((tag) => (
               <div
                 key={tag}
                 className={`chip ${form.tags.includes(tag) ? 'on' : ''}`}

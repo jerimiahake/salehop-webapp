@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import styles from './admin.module.css';
 import ListingForm from '@/components/ListingForm';
 import AdForm from '@/components/AdForm';
+import { formatDateRange } from '@/lib/format';
 
 const STATUS_FILTERS = ['all', 'pending', 'approved', 'rejected'];
 
@@ -31,13 +32,22 @@ export default function AdminPage() {
   const [editingAdId, setEditingAdId] = useState(null);
   const [editAdDraft, setEditAdDraft] = useState(null);
 
+  const [tags, setTags] = useState([]);
+  const [tagsLoading, setTagsLoading] = useState(false);
+  const [tagsError, setTagsError] = useState(null);
+  const [newTagName, setNewTagName] = useState('');
+  const [addingTag, setAddingTag] = useState(false);
+
   useEffect(() => {
     loadSales();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (authed) loadAds();
+    if (authed) {
+      loadAds();
+      loadTags();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed]);
 
@@ -78,6 +88,57 @@ export default function AdminPage() {
     }
   }
 
+  // ---------- Tags ----------
+  async function loadTags() {
+    setTagsLoading(true);
+    setTagsError(null);
+    try {
+      const res = await fetch('/api/admin/tags');
+      if (res.status === 401) return;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load tags.');
+      setTags(data);
+    } catch (err) {
+      setTagsError(err.message);
+    } finally {
+      setTagsLoading(false);
+    }
+  }
+
+  async function handleAddTag(e) {
+    e.preventDefault();
+    if (!newTagName.trim()) return;
+    setAddingTag(true);
+    setTagsError(null);
+    try {
+      const res = await fetch('/api/admin/tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newTagName.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to add tag.');
+      setTags((list) => [...list, data].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewTagName('');
+    } catch (err) {
+      setTagsError(err.message);
+    } finally {
+      setAddingTag(false);
+    }
+  }
+
+  async function handleDeleteTag(tag) {
+    if (!window.confirm(`Remove the "${tag.name}" tag? Existing listings keep it -- this only affects the picker going forward.`)) return;
+    try {
+      const res = await fetch(`/api/admin/tags/${tag.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete tag.');
+      setTags((list) => list.filter((t) => t.id !== tag.id));
+    } catch (err) {
+      setTagsError(err.message);
+    }
+  }
+
   async function handleLogin(e) {
     e.preventDefault();
     setLoggingIn(true);
@@ -104,6 +165,7 @@ export default function AdminPage() {
     setAuthed(false);
     setSales([]);
     setAds([]);
+    setTags([]);
   }
 
   async function updateSale(id, updates) {
@@ -156,6 +218,7 @@ export default function AdminPage() {
       title: sale.title,
       address: sale.address,
       sale_date: sale.sale_date,
+      end_date: sale.end_date || '',
       start_time: (sale.start_time || '').slice(0, 5),
       end_time: (sale.end_time || '').slice(0, 5),
       description: sale.description || '',
@@ -169,7 +232,9 @@ export default function AdminPage() {
 
   async function saveEdit(sale) {
     try {
-      const updated = await updateSale(sale.id, editDraft);
+      // "" from an empty date input means "no end date" -- send null, not
+      // an empty string, since end_date is a Postgres date column.
+      const updated = await updateSale(sale.id, { ...editDraft, end_date: editDraft.end_date || null });
       setSales((list) => list.map((s) => (s.id === sale.id ? updated : s)));
       setMessage(`Saved changes to "${updated.title}".`);
       cancelEdit();
@@ -218,8 +283,9 @@ export default function AdminPage() {
     setEditAdDraft({
       title: ad.title,
       description: ad.description || '',
-      link_url: ad.link_url,
+      link_url: ad.link_url || '',
       sponsor_name: ad.sponsor_name || '',
+      html_snippet: ad.html_snippet || '',
     });
   }
 
@@ -373,6 +439,14 @@ export default function AdminPage() {
                     onChange={(e) => setEditDraft((d) => ({ ...d, sale_date: e.target.value }))}
                   />
                   <input
+                    type="date"
+                    className={styles.input}
+                    value={editDraft.end_date}
+                    min={editDraft.sale_date}
+                    placeholder="End date (optional)"
+                    onChange={(e) => setEditDraft((d) => ({ ...d, end_date: e.target.value }))}
+                  />
+                  <input
                     type="time"
                     className={styles.input}
                     value={editDraft.start_time}
@@ -385,6 +459,9 @@ export default function AdminPage() {
                     onChange={(e) => setEditDraft((d) => ({ ...d, end_time: e.target.value }))}
                   />
                 </div>
+                <p className={styles.hint} style={{ marginTop: -4 }}>
+                  Leave end date blank for a single-day sale.
+                </p>
                 <textarea
                   className={styles.textarea}
                   value={editDraft.description}
@@ -408,7 +485,7 @@ export default function AdminPage() {
                     <p className={styles.rowTitle}>{sale.title}</p>
                     <p className={styles.rowSub}>{sale.address}</p>
                     <p className={styles.rowSub}>
-                      {sale.sale_date} · {(sale.start_time || '').slice(0, 5)}–{(sale.end_time || '').slice(0, 5)}
+                      {formatDateRange(sale.sale_date, sale.end_date)} · {(sale.start_time || '').slice(0, 5)}–{(sale.end_time || '').slice(0, 5)}
                       {sale.is_neighborhood_sale && sale.neighborhood_name ? ` · 🏘️ ${sale.neighborhood_name}` : ''}
                     </p>
                   </div>
@@ -462,18 +539,30 @@ export default function AdminPage() {
                   onChange={(e) => setEditAdDraft((d) => ({ ...d, description: e.target.value }))}
                   placeholder="Description"
                 />
-                <input
-                  className={styles.input}
-                  value={editAdDraft.link_url}
-                  onChange={(e) => setEditAdDraft((d) => ({ ...d, link_url: e.target.value }))}
-                  placeholder="Link URL"
-                />
-                <input
-                  className={styles.input}
-                  value={editAdDraft.sponsor_name}
-                  onChange={(e) => setEditAdDraft((d) => ({ ...d, sponsor_name: e.target.value }))}
-                  placeholder="Sponsor name"
-                />
+                {ad.ad_type === 'snippet' ? (
+                  <textarea
+                    className={styles.codeTextarea}
+                    value={editAdDraft.html_snippet}
+                    onChange={(e) => setEditAdDraft((d) => ({ ...d, html_snippet: e.target.value }))}
+                    placeholder="Embed code"
+                    spellCheck={false}
+                  />
+                ) : (
+                  <>
+                    <input
+                      className={styles.input}
+                      value={editAdDraft.link_url}
+                      onChange={(e) => setEditAdDraft((d) => ({ ...d, link_url: e.target.value }))}
+                      placeholder="Link URL"
+                    />
+                    <input
+                      className={styles.input}
+                      value={editAdDraft.sponsor_name}
+                      onChange={(e) => setEditAdDraft((d) => ({ ...d, sponsor_name: e.target.value }))}
+                      placeholder="Sponsor name"
+                    />
+                  </>
+                )}
                 <div className={styles.actions}>
                   <button type="button" className={styles.button} onClick={() => saveEditAd(ad)}>
                     Save
@@ -491,7 +580,13 @@ export default function AdminPage() {
                   </span>
                   <div>
                     <p className={styles.rowTitle}>{ad.title}</p>
-                    <p className={styles.rowSub}>{ad.sponsor_name ? `Sponsored by ${ad.sponsor_name}` : ad.link_url}</p>
+                    <p className={styles.rowSub}>
+                      {ad.ad_type === 'snippet'
+                        ? '</> Code Snippet'
+                        : ad.sponsor_name
+                        ? `Sponsored by ${ad.sponsor_name}`
+                        : ad.link_url}
+                    </p>
                   </div>
                 </div>
                 <div className={styles.actions}>
@@ -508,6 +603,46 @@ export default function AdminPage() {
               </>
             )}
           </div>
+        ))}
+      </div>
+
+      <h2 className={styles.sectionHeading}>Listing Tags</h2>
+      <p className={styles.hint}>
+        These are the category chips (Tools, Clothing, and so on) sellers can pick from when posting a sale.
+        Deleting a tag here only removes it from the picker going forward -- it won&apos;t change any listings
+        that already have it.
+      </p>
+
+      {tagsError && <div className={styles.bannerError}>{tagsError}</div>}
+      {tagsLoading && <p className={styles.hint}>Loading tags…</p>}
+
+      <form className={styles.tagAddRow} onSubmit={handleAddTag}>
+        <input
+          className={styles.input}
+          value={newTagName}
+          onChange={(e) => setNewTagName(e.target.value)}
+          placeholder="New tag name (e.g. Tools)"
+        />
+        <button type="submit" className={styles.button} disabled={addingTag || !newTagName.trim()}>
+          {addingTag ? 'Adding…' : '+ Add Tag'}
+        </button>
+      </form>
+
+      {!tagsLoading && tags.length === 0 && <p className={styles.hint}>No tags yet.</p>}
+
+      <div className={styles.tagList}>
+        {tags.map((tag) => (
+          <span key={tag.id} className={styles.tagChip}>
+            {tag.name}
+            <button
+              type="button"
+              className={styles.tagChipRemove}
+              onClick={() => handleDeleteTag(tag)}
+              aria-label={`Remove ${tag.name}`}
+            >
+              ✕
+            </button>
+          </span>
         ))}
       </div>
     </div>

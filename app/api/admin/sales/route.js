@@ -59,6 +59,7 @@ export async function POST(request) {
       lat: body.lat ?? null,
       lng: body.lng ?? null,
       sale_date: body.sale_date,
+      end_date: body.end_date || null,
       start_time: body.start_time,
       end_time: body.end_time,
       tags: body.tags || [],

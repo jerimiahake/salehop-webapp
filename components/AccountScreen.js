@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
-import { formatTimeRange } from '@/lib/format';
+import { formatTimeRange, formatDateRange } from '@/lib/format';
 import { SITE_URL } from '@/lib/site';
 import ListingForm from './ListingForm';
 import ShareToFacebookButton from './ShareToFacebookButton';
@@ -234,7 +234,7 @@ export default function AccountScreen({ session, showToast, onEditingChange }) {
               <p className="card-title">{sale.title}</p>
               <p className="card-addr">{sale.address}</p>
               <p className="card-addr">
-                {sale.sale_date} · {formatTimeRange(sale.start_time, sale.end_time)}
+                {formatDateRange(sale.sale_date, sale.end_date)} · {formatTimeRange(sale.start_time, sale.end_time)}
               </p>
               <div className="my-listing-actions">
                 <button type="button" className="chip" onClick={() => setEditingSale(sale)}>

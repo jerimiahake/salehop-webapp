@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { sampleSales, MAP_CENTER } from '@/lib/sampleData';
-import { nextNDays, distanceMiles, toDateKey } from '@/lib/format';
+import { nextNDays, distanceMiles, toDateKey, dateInRange } from '@/lib/format';
 import BrowseScreen from './BrowseScreen';
 import MapScreen from './MapScreen';
 import PostScreen from './PostScreen';
@@ -21,7 +21,10 @@ export default function AppShell() {
   const [loadError, setLoadError] = useState(null);
   const [ads, setAds] = useState([]);
   const dayOptions = useMemo(() => nextNDays(7), []);
-  const [selectedDate, setSelectedDate] = useState(() => toDateKey(new Date()));
+  // Multi-select: most sales run 2-3 days, so Browse lets you pick several
+  // days at once and see anything running on any of them. Always at least
+  // one day selected -- toggleDate below guards against clearing the last one.
+  const [selectedDates, setSelectedDates] = useState(() => [toDateKey(new Date())]);
   const [searchQuery, setSearchQuery] = useState('');
   const [favorites, setFavorites] = useState([]);
   const [selectedSaleId, setSelectedSaleId] = useState(null);
@@ -160,10 +163,22 @@ export default function AppShell() {
 
   const referenceLocation = userLocation || MAP_CENTER;
 
+  // Toggle a day pill on/off, but never down to zero selected days --
+  // Browse always needs at least one day to filter against.
+  const toggleDate = useCallback((date) => {
+    setSelectedDates((prev) => {
+      if (prev.includes(date)) {
+        if (prev.length === 1) return prev;
+        return prev.filter((d) => d !== date);
+      }
+      return [...prev, date];
+    });
+  }, []);
+
   const filteredSales = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return sales
-      .filter((s) => s.sale_date === selectedDate)
+      .filter((s) => selectedDates.some((d) => dateInRange(d, s.sale_date, s.end_date)))
       .filter((s) => {
         if (!q) return true;
         return (
@@ -174,7 +189,7 @@ export default function AppShell() {
       })
       .map((s) => ({ ...s, distance: distanceMiles(referenceLocation, s) }))
       .sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0));
-  }, [sales, selectedDate, searchQuery, referenceLocation]);
+  }, [sales, selectedDates, searchQuery, referenceLocation]);
 
   const favoritedSales = useMemo(
     () => favorites.map((id) => sales.find((s) => s.id === id)).filter(Boolean),
@@ -202,8 +217,8 @@ export default function AppShell() {
             loading={loading}
             loadError={loadError}
             dayOptions={dayOptions}
-            selectedDate={selectedDate}
-            onSelectDate={setSelectedDate}
+            selectedDates={selectedDates}
+            onToggleDate={toggleDate}
             searchQuery={searchQuery}
             onSearch={setSearchQuery}
             favorites={favorites}

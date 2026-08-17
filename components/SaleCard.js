@@ -1,10 +1,13 @@
 ﻿'use client';
 
-import { formatTimeRange } from '@/lib/format';
+import { formatTimeRange, formatDateRange } from '@/lib/format';
 
 export default function SaleCard({ sale, favorited, routeNum, onClick, onToggleFavorite, onFilterNeighborhood }) {
   const time = sale.time || (sale.start_time ? formatTimeRange(sale.start_time, sale.end_time) : '');
   const cover = sale.photo_urls && sale.photo_urls.length > 0 ? sale.photo_urls[0] : null;
+  // Only shown once a sale actually has a real sale_date to range from --
+  // sample/demo sales that only set `time` (no sale_date) skip it.
+  const dateRange = sale.sale_date ? formatDateRange(sale.sale_date, sale.end_date) : null;
 
   return (
     <div className={`card ${favorited ? 'favorited' : ''}`} onClick={onClick}>
@@ -24,6 +27,7 @@ export default function SaleCard({ sale, favorited, routeNum, onClick, onToggleF
           {Number.isFinite(sale.distance) ? ` · ${sale.distance.toFixed(1)} mi` : ''}
         </p>
         <div className="card-meta">
+          {dateRange && <span className="time-badge mono">{dateRange}</span>}
           <span className="time-badge mono">{time}</span>
           {(sale.tags || []).map((t) => (
             <span className="tag" key={t}>

@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
+import { extractCity } from '@/lib/nominatimAddress';
 
 // Server-side proxy to OpenStreetMap's free Nominatim geocoder. Runs on the
 // server so we can set a proper identifying User-Agent, as Nominatim's usage
@@ -16,6 +17,7 @@ export async function GET(request) {
   nominatimUrl.searchParams.set('format', 'json');
   nominatimUrl.searchParams.set('q', address);
   nominatimUrl.searchParams.set('limit', '1');
+  nominatimUrl.searchParams.set('addressdetails', '1');
 
   const res = await fetch(nominatimUrl.toString(), {
     headers: {
@@ -38,5 +40,6 @@ export async function GET(request) {
     lat: parseFloat(results[0].lat),
     lng: parseFloat(results[0].lon),
     displayName: results[0].display_name,
+    city: extractCity(results[0].address),
   });
 }

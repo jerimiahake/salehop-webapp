@@ -1,5 +1,5 @@
 ﻿import { getSaleForShare } from '@/lib/getSaleForShare';
-import { formatTimeRange } from '@/lib/format';
+import { formatTimeRange, formatDateRange } from '@/lib/format';
 import { SITE_URL } from '@/lib/site';
 import ShareToFacebookButton from '@/components/ShareToFacebookButton';
 
@@ -18,7 +18,7 @@ export async function generateMetadata({ params }) {
     return { title: 'Listing not found — SaleHop' };
   }
 
-  const summary = `${sale.sale_date} · ${formatTimeRange(sale.start_time, sale.end_time)} · ${sale.address}`;
+  const summary = `${formatDateRange(sale.sale_date, sale.end_date)} · ${formatTimeRange(sale.start_time, sale.end_time)} · ${sale.address}`;
   const description = sale.description ? sale.description.slice(0, 160) : summary;
   const image = sale.photo_urls && sale.photo_urls.length > 0 ? sale.photo_urls[0] : null;
 
@@ -89,7 +89,7 @@ export default async function ListingPage({ params }) {
           <p className="share-addr">📍 {sale.address}</p>
           <p className="share-meta">
             <span className="time-badge mono">
-              {sale.sale_date} · {formatTimeRange(sale.start_time, sale.end_time)}
+              {formatDateRange(sale.sale_date, sale.end_date)} · {formatTimeRange(sale.start_time, sale.end_time)}
             </span>
           </p>
 
