@@ -1,14 +1,15 @@
-'use client';
+﻿'use client';
 
 const TABS = [
   { key: 'browse', icon: '🏠', label: 'Browse' },
   { key: 'map', icon: '🗺️', label: 'Map' },
   { key: 'post', icon: '+', label: 'Post', isPost: true },
   { key: 'saved', icon: '★', label: 'Saved' },
+  { key: 'account', icon: '👤', label: 'Account' },
 ];
 
-export default function BottomNav({ active, onChange, savedCount }) {
-  if (active === 'post') return null;
+export default function BottomNav({ active, onChange, savedCount, hidden }) {
+  if (active === 'post' || hidden) return null;
 
   return (
     <div className="bottom-nav">

@@ -8,6 +8,7 @@ import BrowseScreen from './BrowseScreen';
 import MapScreen from './MapScreen';
 import PostScreen from './PostScreen';
 import SavedScreen from './SavedScreen';
+import AccountScreen from './AccountScreen';
 import BottomNav from './BottomNav';
 import Toast from './Toast';
 
@@ -25,9 +26,29 @@ export default function AppShell() {
   const [selectedSaleId, setSelectedSaleId] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
   const [toast, setToast] = useState(null);
+  const [session, setSession] = useState(null);
+  const [editingListing, setEditingListing] = useState(false);
 
   const showToast = useCallback((message) => {
     setToast({ message, key: Date.now() });
+  }, []);
+
+  // Track the signed-in seller's session (magic-link auth). Supabase's
+  // client persists the session in localStorage and also picks up the
+  // token from the URL automatically when someone lands here after
+  // clicking their magic-link email -- both are reflected here.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return undefined;
+
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   // Load sales (from Supabase once configured, sample data until then).
@@ -177,7 +198,12 @@ export default function AppShell() {
           />
         </div>
         <div className={`screen ${activeScreen === 'post' ? 'active' : ''}`}>
-          <PostScreen onCancel={() => setActiveScreen('browse')} onPublished={handlePublished} showToast={showToast} />
+          <PostScreen
+            session={session}
+            onCancel={() => setActiveScreen('browse')}
+            onPublished={handlePublished}
+            onGoToAccount={() => setActiveScreen('account')}
+          />
         </div>
         <div className={`screen ${activeScreen === 'saved' ? 'active' : ''}`}>
           <SavedScreen
@@ -187,9 +213,17 @@ export default function AppShell() {
             showToast={showToast}
           />
         </div>
+        <div className={`screen ${activeScreen === 'account' ? 'active' : ''}`}>
+          <AccountScreen session={session} showToast={showToast} onEditingChange={setEditingListing} />
+        </div>
       </div>
 
-      <BottomNav active={activeScreen} onChange={setActiveScreen} savedCount={favorites.length} />
+      <BottomNav
+        active={activeScreen}
+        onChange={setActiveScreen}
+        savedCount={favorites.length}
+        hidden={editingListing}
+      />
       <Toast toast={toast} />
     </div>
   );
