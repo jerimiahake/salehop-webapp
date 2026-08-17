@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { geocodeAddress, suggestAddress } from '@/lib/geocode';
 import { nextNDays } from '@/lib/format';
+import { SITE_URL } from '@/lib/site';
+import ShareToFacebookButton from './ShareToFacebookButton';
 
 const TAG_OPTIONS = ['Furniture', 'Kids', 'Tools', 'Vintage', 'Multi-Family', 'Books', 'Decor', 'Clothing'];
 
@@ -14,6 +16,12 @@ const TAG_OPTIONS = ['Furniture', 'Kids', 'Tools', 'Vintage', 'Multi-Family', 'B
 // stays deliberately gentle rather than instant.
 const SUGGEST_DEBOUNCE_MS = 700;
 const SUGGEST_MIN_LENGTH = 5;
+
+// The neighborhood-name lookup is our own database (cheap, no external
+// usage policy to respect), so this can be quicker/looser than the address
+// suggestions above.
+const NEIGHBORHOOD_DEBOUNCE_MS = 400;
+const NEIGHBORHOOD_MIN_LENGTH = 2;
 
 function blankForm(dayOptions) {
   return {
@@ -26,6 +34,8 @@ function blankForm(dayOptions) {
     endTime: '13:00',
     tags: [],
     description: '',
+    isNeighborhoodSale: false,
+    neighborhoodName: '',
   };
 }
 
@@ -46,15 +56,26 @@ function formFromSale(sale, dayOptions) {
     endTime: (sale.end_time || '13:00').slice(0, 5),
     tags: sale.tags || [],
     description: sale.description || '',
+    isNeighborhoodSale: sale.is_neighborhood_sale || false,
+    neighborhoodName: sale.neighborhood_name || '',
   };
 }
 
-// The shared listing form, used both for posting a brand-new sale (mode
-// "create") and for editing one you already posted (mode "edit"). Handles
-// its own address-autocomplete, date pills, tag/photo pickers, and submit.
+// The shared listing form. Three modes:
+//   "create"       -- a signed-in seller posting their own new sale
+//                      (goes in as 'pending', awaiting review)
+//   "edit"         -- a seller editing their own existing sale
+//                      (goes live immediately, no session needed beyond
+//                      already having one -- ownership is enforced by RLS)
+//   "admin-create" -- the admin panel adding a listing directly. Posts
+//                      through the admin API (service role) instead of the
+//                      public client, and comes back already 'approved'.
+// Handles its own address-autocomplete, neighborhood-name autocomplete,
+// date pills, tag/photo pickers, and submit.
 export default function ListingForm({ mode, session, initialSale, onDone, onCancel }) {
   const dayOptions = useMemo(() => nextNDays(7), []);
   const isEdit = mode === 'edit';
+  const isAdminCreate = mode === 'admin-create';
 
   const [form, setForm] = useState(() =>
     isEdit && initialSale ? formFromSale(initialSale, dayOptions) : blankForm(dayOptions)
@@ -65,6 +86,7 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [justCreated, setJustCreated] = useState(null); // { id, title, status, doneMessage } | null
 
   const [suggestions, setSuggestions] = useState([]);
   const [suggestOpen, setSuggestOpen] = useState(false);
@@ -74,24 +96,35 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
   const abortRef = useRef(null);
   const addressWrapRef = useRef(null);
 
+  const [neighborhoodSuggestions, setNeighborhoodSuggestions] = useState([]);
+  const [neighborhoodSuggestOpen, setNeighborhoodSuggestOpen] = useState(false);
+  const neighborhoodDebounceRef = useRef(null);
+  const neighborhoodAbortRef = useRef(null);
+  const neighborhoodWrapRef = useRef(null);
+
   const totalPhotoCount = photos.length + existingPhotoUrls.length;
 
-  // Close the suggestions dropdown on outside click.
+  // Close either suggestions dropdown on outside click.
   useEffect(() => {
     function handleClickOutside(e) {
       if (addressWrapRef.current && !addressWrapRef.current.contains(e.target)) {
         setSuggestOpen(false);
+      }
+      if (neighborhoodWrapRef.current && !neighborhoodWrapRef.current.contains(e.target)) {
+        setNeighborhoodSuggestOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Cancel any in-flight timer/request if the screen unmounts mid-type.
+  // Cancel any in-flight timers/requests if the screen unmounts mid-type.
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       if (abortRef.current) abortRef.current.abort();
+      if (neighborhoodDebounceRef.current) clearTimeout(neighborhoodDebounceRef.current);
+      if (neighborhoodAbortRef.current) neighborhoodAbortRef.current.abort();
     };
   }, []);
 
@@ -163,6 +196,46 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
     }
   }
 
+  function handleNeighborhoodChange(value) {
+    update('neighborhoodName', value);
+
+    if (neighborhoodDebounceRef.current) clearTimeout(neighborhoodDebounceRef.current);
+    if (neighborhoodAbortRef.current) neighborhoodAbortRef.current.abort();
+
+    const trimmed = value.trim();
+    if (trimmed.length < NEIGHBORHOOD_MIN_LENGTH) {
+      setNeighborhoodSuggestions([]);
+      setNeighborhoodSuggestOpen(false);
+      return;
+    }
+
+    neighborhoodDebounceRef.current = setTimeout(async () => {
+      const controller = new AbortController();
+      neighborhoodAbortRef.current = controller;
+      try {
+        const res = await fetch(`/api/neighborhood-suggest?q=${encodeURIComponent(trimmed)}`, {
+          signal: controller.signal,
+        });
+        const names = res.ok ? await res.json() : [];
+        setNeighborhoodSuggestions(names);
+        setNeighborhoodSuggestOpen(names.length > 0);
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          setNeighborhoodSuggestions([]);
+          setNeighborhoodSuggestOpen(false);
+        }
+      }
+    }, NEIGHBORHOOD_DEBOUNCE_MS);
+  }
+
+  function pickNeighborhood(name) {
+    if (neighborhoodDebounceRef.current) clearTimeout(neighborhoodDebounceRef.current);
+    if (neighborhoodAbortRef.current) neighborhoodAbortRef.current.abort();
+    update('neighborhoodName', name);
+    setNeighborhoodSuggestions([]);
+    setNeighborhoodSuggestOpen(false);
+  }
+
   function toggleTag(tag) {
     setForm((f) => ({
       ...f,
@@ -200,6 +273,11 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
       return;
     }
 
+    if (form.isNeighborhoodSale && !form.neighborhoodName.trim()) {
+      setError('Please enter your neighborhood sale’s name, or uncheck the box above.');
+      return;
+    }
+
     setSubmitting(true);
     try {
       // If we already know exactly where this is (picked a suggestion, or
@@ -213,6 +291,11 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
       }
 
       if (!isSupabaseConfigured) {
+        if (isAdminCreate) {
+          setError('Supabase isn’t connected yet — creating a listing needs a live database connection.');
+          setSubmitting(false);
+          return;
+        }
         onDone(
           isEdit
             ? 'Preview mode: Supabase isn’t connected yet, so this edit wasn’t actually saved.'
@@ -236,6 +319,7 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
       }
 
       const photoUrls = [...existingPhotoUrls, ...newPhotoUrls];
+      const neighborhoodName = form.isNeighborhoodSale ? form.neighborhoodName.trim() : null;
 
       if (isEdit) {
         const { error: updateError } = await supabase
@@ -251,6 +335,8 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
             tags: form.tags,
             description: form.description.trim() || null,
             photo_urls: photoUrls,
+            is_neighborhood_sale: form.isNeighborhoodSale,
+            neighborhood_name: neighborhoodName,
             // status is intentionally omitted -- a database trigger blocks
             // sellers from changing it anyway, and edits go live immediately
             // at whatever status the listing already had.
@@ -260,25 +346,64 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
         if (updateError) throw updateError;
 
         onDone('✅ Listing updated.');
-      } else {
-        const { error: insertError } = await supabase.from('sales').insert({
-          title: form.title.trim(),
-          address: form.address.trim(),
-          lat: location.lat,
-          lng: location.lng,
-          sale_date: saleDate,
-          start_time: form.startTime,
-          end_time: form.endTime,
-          tags: form.tags,
-          description: form.description.trim() || null,
-          photo_urls: photoUrls,
-          status: 'pending',
-          user_id: session.user.id,
+      } else if (isAdminCreate) {
+        const res = await fetch('/api/admin/sales', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: form.title.trim(),
+            address: form.address.trim(),
+            lat: location.lat,
+            lng: location.lng,
+            sale_date: saleDate,
+            start_time: form.startTime,
+            end_time: form.endTime,
+            tags: form.tags,
+            description: form.description.trim() || null,
+            photo_urls: photoUrls,
+            is_neighborhood_sale: form.isNeighborhoodSale,
+            neighborhood_name: neighborhoodName,
+          }),
         });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to create listing.');
+
+        setJustCreated({
+          id: data.id,
+          title: data.title,
+          status: data.status,
+          doneMessage: '✅ Listing created and live.',
+        });
+      } else {
+        const { data: inserted, error: insertError } = await supabase
+          .from('sales')
+          .insert({
+            title: form.title.trim(),
+            address: form.address.trim(),
+            lat: location.lat,
+            lng: location.lng,
+            sale_date: saleDate,
+            start_time: form.startTime,
+            end_time: form.endTime,
+            tags: form.tags,
+            description: form.description.trim() || null,
+            photo_urls: photoUrls,
+            is_neighborhood_sale: form.isNeighborhoodSale,
+            neighborhood_name: neighborhoodName,
+            status: 'pending',
+            user_id: session.user.id,
+          })
+          .select()
+          .single();
 
         if (insertError) throw insertError;
 
-        onDone('🎉 Thanks! Your sale was submitted and is awaiting a quick review before it goes live.');
+        setJustCreated({
+          id: inserted.id,
+          title: inserted.title,
+          status: inserted.status,
+          doneMessage: '🎉 Thanks! Your sale was submitted and is awaiting a quick review before it goes live.',
+        });
       }
     } catch (err) {
       setError(err.message || 'Something went wrong saving your sale.');
@@ -287,13 +412,58 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
     }
   }
 
+  // ---------- Success screen (create + admin-create only) ----------
+  if (justCreated) {
+    const isLive = justCreated.status === 'approved';
+    return (
+      <>
+        <div className="post-header">
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => onDone(justCreated.doneMessage)}
+            aria-label="Close"
+          >
+            ✕
+          </button>
+          <div className="title">{isLive ? 'Listing Live!' : 'Sale Submitted'}</div>
+        </div>
+
+        <div className="post-scroll share-success">
+          <div className="share-success-icon">{isLive ? '✅' : '🎉'}</div>
+          <p className="card-title share-success-title">{justCreated.title}</p>
+          <p className="hint share-success-hint">
+            {isLive
+              ? 'Your listing is live on SaleHop right now.'
+              : "Thanks! Your sale was submitted and is awaiting a quick review. Once it's approved, you'll be able to share it from My Listings."}
+          </p>
+
+          {isLive && (
+            <div className="share-success-actions">
+              <ShareToFacebookButton url={`${SITE_URL}/listing/${justCreated.id}`} quote={justCreated.title} />
+              <a className="chip" style={{ textAlign: 'center' }} href={`/listing/${justCreated.id}`} target="_blank" rel="noopener noreferrer">
+                View Listing Page ↗
+              </a>
+            </div>
+          )}
+        </div>
+
+        <div className="publish-bar">
+          <button type="button" className="publish-btn" onClick={() => onDone(justCreated.doneMessage)}>
+            Done
+          </button>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="post-header">
         <button type="button" className="icon-btn" onClick={onCancel} aria-label="Cancel">
           ✕
         </button>
-        <div className="title">{isEdit ? 'Edit Your Sale' : 'Post a Garage Sale'}</div>
+        <div className="title">{isEdit ? 'Edit Your Sale' : isAdminCreate ? 'Add a Listing' : 'Post a Garage Sale'}</div>
       </div>
 
       <div className="post-scroll">
@@ -345,6 +515,51 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
             <p className="hint address-verified">✓ Address verified — we&apos;ll drop a pin here exactly.</p>
           ) : (
             <p className="hint">Pick a suggestion for the most accurate pin, or type the full address and we&apos;ll look it up when you publish.</p>
+          )}
+        </div>
+
+        <div className="field-group">
+          <label className="neighborhood-toggle">
+            <input
+              type="checkbox"
+              checked={form.isNeighborhoodSale}
+              onChange={(e) => update('isNeighborhoodSale', e.target.checked)}
+            />
+            <span>🏘️ This is part of a neighborhood sale</span>
+          </label>
+          {form.isNeighborhoodSale && (
+            <div className="address-field" ref={neighborhoodWrapRef} style={{ marginTop: 10 }}>
+              <input
+                className="text-input"
+                placeholder="e.g. Maple Ridge, Oakhurst Estates…"
+                value={form.neighborhoodName}
+                autoComplete="off"
+                onChange={(e) => handleNeighborhoodChange(e.target.value)}
+                onFocus={() => {
+                  if (neighborhoodSuggestions.length > 0) setNeighborhoodSuggestOpen(true);
+                }}
+              />
+              {neighborhoodSuggestOpen && neighborhoodSuggestions.length > 0 && (
+                <ul className="address-suggestions">
+                  {neighborhoodSuggestions.map((name) => (
+                    <li key={name}>
+                      <button
+                        type="button"
+                        className="address-suggestion"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => pickNeighborhood(name)}
+                      >
+                        🏘️ {name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="hint">
+                Start typing to see if this neighborhood sale already has a name other sellers used — pick it to keep
+                everyone&apos;s listings grouped together.
+              </p>
+            </div>
           )}
         </div>
 
@@ -458,7 +673,7 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
 
       <div className="publish-bar">
         <button type="button" className="publish-btn" onClick={handleSubmit} disabled={submitting}>
-          {submitting ? 'Saving…' : isEdit ? 'Save Changes →' : 'Publish Sale →'}
+          {submitting ? 'Saving…' : isEdit ? 'Save Changes →' : isAdminCreate ? 'Add Listing →' : 'Publish Sale →'}
         </button>
       </div>
     </>

@@ -1,8 +1,8 @@
-'use client';
+﻿'use client';
 
 import { formatTimeRange } from '@/lib/format';
 
-export default function SaleCard({ sale, favorited, routeNum, onClick, onToggleFavorite }) {
+export default function SaleCard({ sale, favorited, routeNum, onClick, onToggleFavorite, onFilterNeighborhood }) {
   const time = sale.time || (sale.start_time ? formatTimeRange(sale.start_time, sale.end_time) : '');
   const cover = sale.photo_urls && sale.photo_urls.length > 0 ? sale.photo_urls[0] : null;
 
@@ -31,6 +31,18 @@ export default function SaleCard({ sale, favorited, routeNum, onClick, onToggleF
             </span>
           ))}
         </div>
+        {sale.is_neighborhood_sale && sale.neighborhood_name && (
+          <button
+            type="button"
+            className="neighborhood-badge"
+            onClick={(e) => {
+              e.stopPropagation();
+              onFilterNeighborhood?.(sale.neighborhood_name);
+            }}
+          >
+            🏘️ Part of {sale.neighborhood_name}
+          </button>
+        )}
       </div>
       <button
         type="button"

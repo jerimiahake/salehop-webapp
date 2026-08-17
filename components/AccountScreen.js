@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { formatTimeRange } from '@/lib/format';
+import { SITE_URL } from '@/lib/site';
 import ListingForm from './ListingForm';
+import ShareToFacebookButton from './ShareToFacebookButton';
 
 const STATUS_LABEL = { pending: 'Pending Review', approved: 'Live', rejected: 'Not Approved' };
 
@@ -238,6 +240,14 @@ export default function AccountScreen({ session, showToast, onEditingChange }) {
                 <button type="button" className="chip" onClick={() => setEditingSale(sale)}>
                   Edit
                 </button>
+                {sale.status === 'approved' && (
+                  <ShareToFacebookButton
+                    url={`${SITE_URL}/listing/${sale.id}`}
+                    quote={sale.title}
+                    className="chip"
+                    label="Share"
+                  />
+                )}
                 <button type="button" className="chip danger" onClick={() => handleDelete(sale)}>
                   Delete
                 </button>

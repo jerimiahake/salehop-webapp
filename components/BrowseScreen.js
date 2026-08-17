@@ -1,9 +1,32 @@
 ﻿'use client';
 
 import SaleCard from './SaleCard';
+import AdCard from './AdCard';
+
+// How often an ad card appears in the scrolling list -- every 4th real
+// listing. Ads never appear if there are zero matching sales (nothing to
+// interleave between), so a slow day never turns into an ads-only list.
+const AD_INTERVAL = 4;
+
+function buildFeed(sales, ads) {
+  const feed = sales.map((sale) => ({ type: 'sale', sale }));
+  if (!ads || ads.length === 0 || sales.length === 0) return feed;
+
+  const withAds = [];
+  let adIdx = 0;
+  feed.forEach((item, i) => {
+    withAds.push(item);
+    if ((i + 1) % AD_INTERVAL === 0) {
+      withAds.push({ type: 'ad', ad: ads[adIdx % ads.length], key: `ad-${i}` });
+      adIdx += 1;
+    }
+  });
+  return withAds;
+}
 
 export default function BrowseScreen({
   sales,
+  ads,
   loading,
   loadError,
   dayOptions,
@@ -16,6 +39,7 @@ export default function BrowseScreen({
   onOpenSale,
 }) {
   let routeIdx = 0;
+  const feed = buildFeed(sales, ads);
 
   return (
     <>
@@ -73,7 +97,11 @@ export default function BrowseScreen({
 
         {!loading &&
           !loadError &&
-          sales.map((sale) => {
+          feed.map((item) => {
+            if (item.type === 'ad') {
+              return <AdCard key={item.key} ad={item.ad} />;
+            }
+            const sale = item.sale;
             const favorited = favorites.includes(sale.id);
             if (favorited) routeIdx += 1;
             return (
@@ -84,6 +112,7 @@ export default function BrowseScreen({
                 routeNum={routeIdx}
                 onClick={() => onOpenSale(sale.id)}
                 onToggleFavorite={onToggleFavorite}
+                onFilterNeighborhood={onSearch}
               />
             );
           })}

@@ -19,6 +19,7 @@ export default function AppShell() {
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
+  const [ads, setAds] = useState([]);
   const dayOptions = useMemo(() => nextNDays(7), []);
   const [selectedDate, setSelectedDate] = useState(() => toDateKey(new Date()));
   const [searchQuery, setSearchQuery] = useState('');
@@ -84,6 +85,27 @@ export default function AppShell() {
     };
   }, []);
 
+  // Load active ads (sponsored cards mixed into Browse). Not critical if
+  // this fails or Supabase isn't configured yet -- the app just shows no
+  // ads rather than breaking anything.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return undefined;
+    let cancelled = false;
+
+    supabase
+      .from('ads')
+      .select('*')
+      .eq('active', true)
+      .then(({ data, error }) => {
+        if (cancelled || error) return;
+        setAds(data || []);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Load saved favorites (route stops) from this browser -- no account needed.
   useEffect(() => {
     try {
@@ -144,7 +166,11 @@ export default function AppShell() {
       .filter((s) => s.sale_date === selectedDate)
       .filter((s) => {
         if (!q) return true;
-        return s.title.toLowerCase().includes(q) || s.address.toLowerCase().includes(q);
+        return (
+          s.title.toLowerCase().includes(q) ||
+          s.address.toLowerCase().includes(q) ||
+          (s.neighborhood_name || '').toLowerCase().includes(q)
+        );
       })
       .map((s) => ({ ...s, distance: distanceMiles(referenceLocation, s) }))
       .sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0));
@@ -172,6 +198,7 @@ export default function AppShell() {
         <div className={`screen ${activeScreen === 'browse' ? 'active' : ''}`}>
           <BrowseScreen
             sales={filteredSales}
+            ads={ads}
             loading={loading}
             loadError={loadError}
             dayOptions={dayOptions}

@@ -57,9 +57,8 @@ body {
 
 /* ---------- ADMIN DASHBOARD OVERRIDE ---------- */
 /* The rules above center everything inside a fixed-size phone frame for the
-   mobile mockup. /admin is a normal desktop page (added by admin-panel.ps1),
-   so it opts out of that layout entirely while mounted. Harmless if the
-   admin panel isn't installed yet -- nothing adds this class until it is. */
+   mobile mockup. /admin is a normal desktop page (see AdminBodyClass.js),
+   so it opts out of that layout entirely while mounted. */
 body.admin-mode {
   display: block;
   min-height: 100vh;
@@ -263,6 +262,53 @@ textarea { resize: vertical; min-height: 80px; }
 .status-badge.approved { background: #d9ecdb; color: #2f5136; }
 .status-badge.rejected { background: #f6d6d6; color: #8a2a2a; }
 .my-listing-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+/* ---------- ADS (mixed into Browse) ---------- */
+.card.ad-card { background: #FFF7E0; border: 1.5px dashed var(--yellow-deep); border-left: 6px solid var(--yellow-deep); }
+.ad-badge { font-size: 9.5px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase; background: var(--yellow-deep); color: #fff; padding: 3px 7px; border-radius: 5px; }
+.ad-sponsor { font-size: 11.5px; color: var(--ink-soft); margin: 0 0 6px; }
+
+/* ---------- NEIGHBORHOOD SALES ---------- */
+.neighborhood-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--ink); cursor: pointer; }
+.neighborhood-toggle input { width: 17px; height: 17px; accent-color: var(--yellow-deep); cursor: pointer; }
+.neighborhood-badge {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 700;
+  color: var(--ink-soft); background: var(--tan); border: 1px solid var(--line);
+  padding: 3px 7px; border-radius: 5px; cursor: pointer; margin-top: 7px; font-family: inherit;
+}
+.neighborhood-badge:hover { background: var(--yellow); border-color: var(--yellow-deep); color: var(--ink); }
+
+/* ---------- FACEBOOK SHARE ---------- */
+.fb-share-btn {
+  background: #1877F2; color: #fff; border: none; padding: 13px 16px; border-radius: 12px;
+  font-weight: 700; font-size: 13.5px; cursor: pointer; font-family: inherit; width: 100%;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.fb-share-btn:hover { background: #1567d3; }
+
+/* ---------- POST SUCCESS / SHARE PANEL ---------- */
+.share-success { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 50px; }
+.share-success-icon { font-size: 46px; margin-bottom: 14px; }
+.share-success-title { font-size: 17px; margin-bottom: 8px; }
+.share-success-hint { margin-bottom: 22px; max-width: 280px; }
+.share-success-actions { width: 100%; max-width: 300px; display: flex; flex-direction: column; gap: 10px; }
+
+/* ---------- LISTING SHARE PAGE (/listing/[id]) ---------- */
+.share-page { width: 100%; max-width: 480px; padding: 24px 16px; }
+.share-card { background: #fff; border-radius: 18px; overflow: hidden; border: 1.5px solid var(--line); box-shadow: 0 20px 50px rgba(0,0,0,0.35); }
+.share-logo { padding: 16px 18px 0; font-size: 19px; color: var(--yellow-deep); }
+.share-logo span { color: var(--ink); }
+.share-cover { width: 100%; height: 220px; object-fit: cover; display: block; margin-top: 12px; }
+.share-body { padding: 18px 20px 22px; }
+.share-title { font-family: inherit; font-weight: 700; font-size: 19px; margin: 0 0 8px; }
+.share-addr { font-size: 13px; color: var(--ink-soft); margin: 0 0 8px; }
+.share-meta { margin: 0 0 4px; }
+.share-desc { font-size: 13.5px; line-height: 1.5; color: var(--ink); margin: 14px 0 0; white-space: pre-wrap; }
+.share-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+.share-home-link { text-align: center; }
+.share-empty { padding: 40px 24px; text-align: center; color: var(--ink-soft); font-size: 13.5px; }
+.share-empty .big { font-size: 38px; margin-bottom: 12px; }
+.share-home-btn { display: inline-block; text-decoration: none; margin-top: 16px; width: auto; padding: 12px 22px; }
 
 /* ---------- TOAST ---------- */
 .toast {
