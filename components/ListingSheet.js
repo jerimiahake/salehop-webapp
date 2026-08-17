@@ -126,9 +126,6 @@ export default function ListingSheet({ sale, favorited, onToggleFavorite, onClos
             onPointerCancel={handlePointerUp}
           >
             <div className="sheet-handle" />
-            <button type="button" className="sheet-close" onClick={() => settle('closed')} aria-label="Close">
-              ✕
-            </button>
             <div className="sheet-head">
               <div className="thumb" style={{ background: favorited ? '#e4f0e6' : '#faf1d8' }}>
                 {cover ? (
