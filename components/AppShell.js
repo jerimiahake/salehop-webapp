@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
@@ -139,9 +139,9 @@ export default function AppShell() {
     setActiveScreen('map');
   }
 
-  function handlePublished() {
+  function handlePublished(message) {
     setActiveScreen('browse');
-    showToast('🎉 Thanks! Your sale was submitted and is awaiting a quick review before it goes live.');
+    showToast(message || '\ud83c\udf89 Thanks! Your sale was submitted and is awaiting a quick review before it goes live.');
   }
 
   return (

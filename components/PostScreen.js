@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
@@ -75,10 +75,12 @@ export default function PostScreen({ onCancel, onPublished, showToast }) {
       }
 
       if (!isSupabaseConfigured) {
-        // Preview mode: no Supabase project connected yet.
-        showToast?.('Preview mode: connect Supabase (see README) to actually publish sales.');
+        // Preview mode: no Supabase project connected yet. Pass the message
+        // through onPublished rather than also calling showToast directly --
+        // both would set the toast in the same tick and only the last one
+        // would actually render, silently hiding this message.
         resetForm();
-        onPublished();
+        onPublished("Preview mode: Supabase isn't connected yet, so this wasn't actually saved. See the README to connect it.");
         return;
       }
 
@@ -125,7 +127,7 @@ export default function PostScreen({ onCancel, onPublished, showToast }) {
     <>
       <div className="post-header">
         <button type="button" className="icon-btn" onClick={onCancel} aria-label="Cancel">
-          ✕
+          âœ•
         </button>
         <div className="title">Post a Garage Sale</div>
       </div>
@@ -142,7 +144,7 @@ export default function PostScreen({ onCancel, onPublished, showToast }) {
         </div>
 
         <div className="field-group">
-          <p className="field-label">📍 Address</p>
+          <p className="field-label">ðŸ“ Address</p>
           <input
             className="text-input"
             placeholder="Street address"
@@ -161,7 +163,7 @@ export default function PostScreen({ onCancel, onPublished, showToast }) {
                 className={`pill ${form.day === d ? 'active' : ''}`}
                 onClick={() => update('day', d)}
               >
-                {d === 'CUSTOM' ? 'Pick date…' : d}
+                {d === 'CUSTOM' ? 'Pick dateâ€¦' : d}
               </div>
             ))}
           </div>
@@ -218,13 +220,13 @@ export default function PostScreen({ onCancel, onPublished, showToast }) {
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={p.previewUrl} alt="" />
                 <button type="button" className="x" onClick={() => removePhoto(i)} aria-label="Remove photo">
-                  ✕
+                  âœ•
                 </button>
               </div>
             ))}
             {photos.length < 6 && (
               <label className="photo-add">
-                <span style={{ fontSize: 18 }}>📷</span>
+                <span style={{ fontSize: 18 }}>ðŸ“·</span>
                 <span>Add</span>
                 <input type="file" accept="image/*" multiple hidden onChange={addPhoto} />
               </label>
@@ -236,7 +238,7 @@ export default function PostScreen({ onCancel, onPublished, showToast }) {
         <div className="field-group">
           <p className="field-label">Description</p>
           <textarea
-            placeholder="What are you selling? Mention any big-ticket items…"
+            placeholder="What are you selling? Mention any big-ticket itemsâ€¦"
             value={form.description}
             onChange={(e) => update('description', e.target.value)}
           />
@@ -247,7 +249,7 @@ export default function PostScreen({ onCancel, onPublished, showToast }) {
 
       <div className="publish-bar">
         <button type="button" className="publish-btn" onClick={handleSubmit} disabled={submitting}>
-          {submitting ? 'Publishing…' : 'Publish Sale →'}
+          {submitting ? 'Publishingâ€¦' : 'Publish Sale â†’'}
         </button>
       </div>
     </>
