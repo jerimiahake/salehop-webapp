@@ -38,6 +38,11 @@ export default function AdminPage() {
   const [newTagName, setNewTagName] = useState('');
   const [addingTag, setAddingTag] = useState(false);
 
+  const [importFile, setImportFile] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const [importError, setImportError] = useState(null);
+
   useEffect(() => {
     loadSales();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -136,6 +141,35 @@ export default function AdminPage() {
       setTags((list) => list.filter((t) => t.id !== tag.id));
     } catch (err) {
       setTagsError(err.message);
+    }
+  }
+
+  // Uploads the filled-out spreadsheet to /api/admin/sales/import, which
+  // geocodes and creates each valid row as an already-approved listing
+  // (same as "+ Add Listing"). Can take a while for a large file -- each
+  // row is geocoded one at a time to respect Nominatim's free-service rate
+  // limit -- so this shows a "this can take a minute" hint while it runs.
+  async function handleImport(e) {
+    e.preventDefault();
+    if (!importFile) return;
+    setImporting(true);
+    setImportError(null);
+    setImportResult(null);
+    try {
+      const body = new FormData();
+      body.append('file', importFile);
+      const res = await fetch('/api/admin/sales/import', { method: 'POST', body });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Import failed.');
+      setImportResult(data);
+      setImportFile(null);
+      if (data.imported > 0) {
+        await loadSales();
+      }
+    } catch (err) {
+      setImportError(err.message);
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -361,6 +395,13 @@ export default function AdminPage() {
           >
             {activePanel === 'addAd' ? 'Close' : '+ Add Ad'}
           </button>
+          <button
+            type="button"
+            className={styles.buttonSecondary}
+            onClick={() => setActivePanel(activePanel === 'import' ? null : 'import')}
+          >
+            {activePanel === 'import' ? 'Close' : '+ Import Spreadsheet'}
+          </button>
           <button type="button" className={styles.linkButton} onClick={handleLogout}>
             Sign Out
           </button>
@@ -394,6 +435,58 @@ export default function AdminPage() {
             setMessage(`Created ad "${ad.title}".`);
           }}
         />
+      )}
+
+      {activePanel === 'import' && (
+        <div className={styles.importPanel}>
+          <p className={styles.hint}>
+            Fill out the template spreadsheet in Excel, one row per sale, then upload it here.
+            Each imported listing goes live immediately (same as "+ Add Listing").{' '}
+            <a href="/salehop-listing-import-template.xlsx" download>
+              Download the template
+            </a>
+            .
+          </p>
+
+          <form onSubmit={handleImport}>
+            <input
+              type="file"
+              accept=".xlsx"
+              onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+              className={styles.input}
+            />
+            {importError && <p className={styles.error}>{importError}</p>}
+            <button type="submit" className={styles.button} disabled={!importFile || importing}>
+              {importing ? 'Importing… this can take a minute, please don’t close this tab' : 'Upload & Import'}
+            </button>
+          </form>
+
+          {importResult && (
+            <div className={styles.importResult}>
+              <p className={styles.banner}>
+                Imported {importResult.imported} listing{importResult.imported === 1 ? '' : 's'}.
+                {importResult.truncated
+                  ? ` This file had more rows than fit in one import (max ${importResult.maxRows}) -- delete the rows already imported and re-upload the rest.`
+                  : ''}
+              </p>
+              {importResult.skipped.length > 0 && (
+                <>
+                  <p className={styles.hint} style={{ marginTop: 10 }}>
+                    Skipped {importResult.skipped.length} row{importResult.skipped.length === 1 ? '' : 's'} -- fix these in the
+                    spreadsheet and re-upload just those rows if you want them included:
+                  </p>
+                  <ul className={styles.importSkipList}>
+                    {importResult.skipped.map((s) => (
+                      <li key={s.row} className={styles.importSkipRow}>
+                        <b>Row {s.row}</b> ({s.title}): {s.reason}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       <div className={styles.filters}>

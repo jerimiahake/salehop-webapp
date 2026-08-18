@@ -407,3 +407,29 @@
   background: #f6d6d6;
   color: #8a2a2a;
 }
+
+.importPanel {
+  max-width: 520px;
+  background: #fff;
+  border: 1px solid #e2ddcf;
+  border-radius: 14px;
+  padding: 18px;
+  margin-bottom: 18px;
+}
+
+.importResult {
+  margin-top: 4px;
+}
+
+.importSkipList {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.importSkipRow {
+  font-size: 12.5px;
+  color: #5a5346;
+}
