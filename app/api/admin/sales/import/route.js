@@ -10,15 +10,19 @@ import { extractCity } from '@/lib/nominatimAddress';
 // a time with a pause between requests -- Nominatim's usage policy caps
 // automated use at 1 request/second
 // (https://operations.osmfoundation.org/policies/nominatim/), so a bigger
-// file just takes proportionally longer, it doesn't fail.
+// file just takes proportionally longer, it doesn't fail. A row whose exact
+// address can't be found gets a second, slower attempt without the house
+// number (see stripHouseNumber below), so a row can cost up to two
+// Nominatim calls worst-case.
 //
 // Vercel's default function duration (with fluid compute, which is on by
-// default) is 5 minutes even on the free Hobby plan, so this has plenty of
-// room -- but MAX_ROWS below still caps a single import so an accidentally
-// huge file fails fast and clearly instead of quietly running for minutes.
-export const maxDuration = 240;
+// default) is 5 minutes even on the free Hobby plan. MAX_ROWS is sized so
+// that even the worst case -- every single row needing the two-call
+// fallback -- finishes comfortably inside that budget, and also caps how
+// long an accidentally-huge file can run before failing fast and clearly.
+export const maxDuration = 280;
 
-const MAX_ROWS = 150;
+const MAX_ROWS = 100;
 const NOMINATIM_DELAY_MS = 1100;
 
 function sleep(ms) {
@@ -110,6 +114,16 @@ async function geocodeOne(address) {
     lng: parseFloat(results[0].lon),
     city: extractCity(results[0].address),
   };
+}
+
+// A rural or newer address is often missing from OpenStreetMap's data as an
+// exact point even when the road itself is mapped -- dropping the house
+// number and re-searching ("Leonard Rd, Atlanta, IN 46031" instead of
+// "28655 Leonard Rd, ...") recovers a lot of these. The result lands
+// somewhere along the right street rather than the exact lot, so callers
+// should treat it as an approximation, not remove the need for one entirely.
+function stripHouseNumber(address) {
+  return address.replace(/^\s*\d+[a-zA-Z]?(-\d+[a-zA-Z]?)?\s+/, '').trim();
 }
 
 export async function POST(request) {
@@ -220,9 +234,29 @@ export async function POST(request) {
       await sleep(NOMINATIM_DELAY_MS);
     }
     geocodeCalls += 1;
-    const location = await geocodeOne(address);
+    let location = await geocodeOne(address);
+    let approximate = false;
+
+    // Exact address not found -- try again without the house number. This
+    // often finds the right street (a close approximation) even when the
+    // exact lot isn't in OpenStreetMap's data, which is common for rural
+    // roads and newer construction.
     if (!location) {
-      skipped.push({ row: rowNum, title, reason: `Couldn't locate "${address}" on the map -- double-check the address.` });
+      const fallbackQuery = stripHouseNumber(address);
+      if (fallbackQuery && fallbackQuery !== address) {
+        await sleep(NOMINATIM_DELAY_MS);
+        geocodeCalls += 1;
+        location = await geocodeOne(fallbackQuery);
+        if (location) approximate = true;
+      }
+    }
+
+    if (!location) {
+      skipped.push({
+        row: rowNum,
+        title,
+        reason: `Couldn't locate "${address}" on the map, even without the house number -- double-check the street name and spelling.`,
+      });
       continue;
     }
 
@@ -269,11 +303,12 @@ export async function POST(request) {
       continue;
     }
 
-    imported.push({ row: rowNum, title, id: data.id });
+    imported.push({ row: rowNum, title, id: data.id, approximate });
   }
 
   return NextResponse.json({
     imported: imported.length,
+    approximate: imported.filter((r) => r.approximate),
     skipped,
     truncated,
     maxRows: MAX_ROWS,
