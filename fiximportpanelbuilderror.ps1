@@ -1,4 +1,31 @@
-﻿'use client';
+﻿# Fixes the build failure from the last round: Next.js's linter (which
+# runs as part of every build) rejects raw straight-quote characters
+# inside JSX text -- the Import panel's description text had literal
+# quotes around "+ Add Listing", now swapped for the HTML entity
+# equivalent. No functional change, no new dependency, no database
+# change -- this only fixes why the last deploy failed to compile.
+#
+# Safe to re-run if something fails partway through.
+
+$projectPath = "C:\Users\Bastian\Documents\WebDesign\SaleHop-app\salehopproject\salehop"
+
+Write-Host "Moving into $projectPath ..." -ForegroundColor Cyan
+if (-not (Test-Path $projectPath)) {
+    Write-Host "ERROR: That folder doesn't exist. Double-check the path and edit it at the top of this script." -ForegroundColor Red
+    exit 1
+}
+Set-Location $projectPath
+
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Write-Host "ERROR: git isn't installed (or not on PATH)." -ForegroundColor Red
+    exit 1
+}
+
+New-Item -ItemType Directory -Force -Path "app\admin" | Out-Null
+
+Write-Host "Writing app\admin\page.js ..." -ForegroundColor Cyan
+@'
+'use client';
 
 import { useEffect, useState } from 'react';
 import styles from './admin.module.css';
@@ -741,4 +768,27 @@ export default function AdminPage() {
       </div>
     </div>
   );
+}
+'@ | Set-Content -Encoding UTF8 "app\admin\page.js"
+
+Write-Host "Staging, committing, and pushing ..." -ForegroundColor Cyan
+git add .
+git commit -m "Fix build error: escape quotes in Import panel JSX text"
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "If that failed with 'Please tell me who you are', run these two lines (with your info) then re-run this script:" -ForegroundColor Yellow
+    Write-Host '  git config --global user.email "you@example.com"' -ForegroundColor Yellow
+    Write-Host '  git config --global user.name "Your Name"' -ForegroundColor Yellow
+    exit 1
+}
+
+git push
+
+if ($LASTEXITCODE -eq 0) {
+    Write-Host ""
+    Write-Host "Done! Check Vercel's deployments tab for this new push -- it should now show a green checkmark instead of the earlier build failure. Once it deploys, /admin should show the '+ Import Spreadsheet' button." -ForegroundColor Green
+} else {
+    Write-Host ""
+    Write-Host "The push didn't finish cleanly -- scroll up for git's error message and send it to me." -ForegroundColor Red
 }
