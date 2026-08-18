@@ -290,14 +290,16 @@ export default function AccountScreen({ session, showToast, onEditingChange }) {
                       label="Share"
                     />
                   )}
-                  {sale.status !== 'rejected' && !isCurrentlyFeatured && (
+                  {sale.status !== 'rejected' && (
                     <button
                       type="button"
                       className="chip featured-chip"
-                      disabled={featuringId === sale.id}
+                      disabled={featuringId === sale.id || isCurrentlyFeatured}
                       onClick={() => handleFeature(sale)}
                     >
-                      {featuringId === sale.id
+                      {isCurrentlyFeatured
+                        ? '✓ Currently Featured'
+                        : featuringId === sale.id
                         ? 'Starting checkout…'
                         : sale.status === 'pending'
                         ? '⭐ Skip Wait & Feature — $10'
