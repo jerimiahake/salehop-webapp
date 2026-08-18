@@ -131,6 +131,13 @@ body.admin-mode {
   border-radius: var(--radius); padding: 12px; margin-bottom: 12px;
   position: relative; cursor: pointer;
 }
+/* Paid placement (see supabase/schema-v5-featured-listings.sql) -- a
+   brighter left-border than the default card, plus the ".featured-badge"
+   chip in .card-meta below. Comes before ".card.favorited" in the
+   stylesheet on purpose: a sale can be both, and a personal "on my route"
+   marker (green) is more useful to that one visitor than the paid-for
+   badge, so favorited wins the border-color tiebreak when both apply. */
+.card.featured { border-left-color: var(--yellow); }
 .card.favorited { border-left-color: var(--green); }
 .thumb { width: 52px; height: 52px; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; overflow: hidden; }
 .thumb img { width: 100%; height: 100%; object-fit: cover; }
@@ -139,6 +146,7 @@ body.admin-mode {
 .card-addr { font-size: 12px; color: var(--ink-soft); margin: 0 0 6px; }
 .card-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .time-badge { font-size: 10.5px; font-weight: 700; background: var(--tan); padding: 3px 6px; border-radius: 5px; color: var(--ink); }
+.featured-badge { font-size: 10.5px; font-weight: 800; letter-spacing: 0.2px; background: var(--yellow); color: var(--ink); padding: 3px 7px; border-radius: 5px; }
 .tag { font-size: 10.5px; color: var(--ink-soft); background: var(--paper); border: 1px solid var(--line); padding: 3px 6px; border-radius: 5px; }
 .fav-btn {
   position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 50%;
@@ -319,7 +327,10 @@ textarea { resize: vertical; min-height: 80px; }
 .status-badge.pending { background: #f6e5b8; color: #7a5b13; }
 .status-badge.approved { background: #d9ecdb; color: #2f5136; }
 .status-badge.rejected { background: #f6d6d6; color: #8a2a2a; }
-.my-listing-actions { display: flex; gap: 8px; margin-top: 10px; }
+.my-listing-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.featured-status { font-size: 12px; font-weight: 700; color: var(--yellow-deep); margin: 4px 0 0; }
+.chip.featured-chip { background: var(--yellow); border-color: var(--yellow-deep); color: var(--ink); }
+.chip.featured-chip:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* ---------- ADS (mixed into Browse) ---------- */
 .card.ad-card { background: #FFF7E0; border: 1.5px dashed var(--yellow-deep); border-left: 6px solid var(--yellow-deep); }

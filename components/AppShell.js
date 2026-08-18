@@ -119,6 +119,34 @@ export default function AppShell() {
     }
   }, []);
 
+  // Stripe redirects back here (full page reload) after a "Feature this
+  // listing" checkout finishes -- success_url/cancel_url in
+  // /api/stripe/create-checkout-session both just point at "/" with a
+  // ?featured=... marker. This picks that up once on mount, shows a toast,
+  // jumps to Account (where the listing lives), and then strips the query
+  // param so refreshing/sharing the URL later doesn't replay the message.
+  // The actual "mark it featured" already happened server-side in the
+  // Stripe webhook by the time this redirect lands -- this is just the
+  // user-facing landing, not what does the marking.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const featured = params.get('featured');
+    if (!featured) return;
+
+    if (featured === 'success') {
+      showToast('🌟 Payment received -- your listing is now featured at the top of Browse!');
+      setActiveScreen('account');
+    } else if (featured === 'cancelled') {
+      setActiveScreen('account');
+    }
+
+    params.delete('featured');
+    const rest = params.toString();
+    window.history.replaceState({}, '', rest ? `?${rest}` : window.location.pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Best-effort location for distance sorting; silently no-ops if denied.
   useEffect(() => {
     if (!('geolocation' in navigator)) return;
@@ -177,6 +205,7 @@ export default function AppShell() {
 
   const filteredSales = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+    const todayKey = toDateKey(new Date());
     return sales
       .filter((s) => selectedDates.some((d) => dateInRange(d, s.sale_date, s.end_date)))
       .filter((s) => {
@@ -187,8 +216,20 @@ export default function AppShell() {
           (s.neighborhood_name || '').toLowerCase().includes(q)
         );
       })
-      .map((s) => ({ ...s, distance: distanceMiles(referenceLocation, s) }))
-      .sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0));
+      .map((s) => ({
+        ...s,
+        distance: distanceMiles(referenceLocation, s),
+        // "Featured" until the paid-for window (set by the Stripe webhook,
+        // see supabase/schema-v5-featured-listings.sql) actually lapses --
+        // the `featured` flag alone can stay true past that date, this is
+        // what both the sort below and the badge in SaleCard/ListingSheet
+        // actually check.
+        isFeatured: Boolean(s.featured && s.featured_until && s.featured_until >= todayKey),
+      }))
+      .sort((a, b) => {
+        if (a.isFeatured !== b.isFeatured) return a.isFeatured ? -1 : 1;
+        return (a.distance ?? 0) - (b.distance ?? 0);
+      });
   }, [sales, selectedDates, searchQuery, referenceLocation]);
 
   const favoritedSales = useMemo(

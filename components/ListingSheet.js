@@ -139,6 +139,7 @@ export default function ListingSheet({ sale, favorited, onToggleFavorite, onClos
                 <p className="card-title">{activeSale.title}</p>
                 <p className="card-addr">{activeSale.address}</p>
                 <div className="card-meta">
+                  {activeSale.isFeatured && <span className="featured-badge">⭐ Featured</span>}
                   {dateRange && <span className="time-badge mono">{dateRange}</span>}
                   {time && <span className="time-badge mono">{time}</span>}
                 </div>

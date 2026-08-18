@@ -487,6 +487,7 @@ export default function AdminPage() {
                     <p className={styles.rowSub}>
                       {formatDateRange(sale.sale_date, sale.end_date)} · {(sale.start_time || '').slice(0, 5)}–{(sale.end_time || '').slice(0, 5)}
                       {sale.is_neighborhood_sale && sale.neighborhood_name ? ` · 🏘️ ${sale.neighborhood_name}` : ''}
+                      {sale.featured && sale.featured_until ? ` · ⭐ Featured until ${sale.featured_until}` : ''}
                     </p>
                   </div>
                 </div>

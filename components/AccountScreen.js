@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
-import { formatTimeRange, formatDateRange } from '@/lib/format';
+import { formatTimeRange, formatDateRange, toDateKey } from '@/lib/format';
 import { SITE_URL } from '@/lib/site';
 import ListingForm from './ListingForm';
 import ShareToFacebookButton from './ShareToFacebookButton';
@@ -22,6 +22,9 @@ export default function AccountScreen({ session, showToast, onEditingChange }) {
   // Bumped after a delete/edit completes to trigger a refetch below, without
   // needing loadListings itself in the effect's dependency array.
   const [refreshKey, setRefreshKey] = useState(0);
+  // id of whichever listing's "Feature — $10" button was just tapped, so
+  // only that one button shows a loading state while checkout starts.
+  const [featuringId, setFeaturingId] = useState(null);
 
   // Let AppShell know whether we're mid-edit, so it can hide the bottom nav
   // the same way it does during Post -- tapping away mid-edit would
@@ -112,6 +115,32 @@ export default function AccountScreen({ session, showToast, onEditingChange }) {
     setEditingSale(null);
     setRefreshKey((k) => k + 1);
     showToast?.(message);
+  }
+
+  // Starts a Stripe Checkout Session for pinning this listing to the top
+  // of Browse for $10, then redirects the whole tab to Stripe's hosted
+  // checkout page. The listing doesn't actually get marked featured until
+  // the Stripe webhook confirms payment server-side (see
+  // app/api/stripe/webhook/route.js) -- this only ever starts checkout.
+  async function handleFeature(sale) {
+    setFeaturingId(sale.id);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) throw new Error('Please sign in again.');
+
+      const res = await fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ sale_id: sale.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not start checkout.');
+      window.location.href = data.url;
+    } catch (err) {
+      showToast?.(`Couldn't start checkout: ${err.message}`);
+      setFeaturingId(null);
+    }
   }
 
   // ---------- Editing an existing listing ----------
@@ -228,32 +257,59 @@ export default function AccountScreen({ session, showToast, onEditingChange }) {
 
         {!loading &&
           !loadError &&
-          listings.map((sale) => (
-            <div className="my-listing-card" key={sale.id}>
-              <div className={`status-badge ${sale.status}`}>{STATUS_LABEL[sale.status] || sale.status}</div>
-              <p className="card-title">{sale.title}</p>
-              <p className="card-addr">{sale.address}</p>
-              <p className="card-addr">
-                {formatDateRange(sale.sale_date, sale.end_date)} · {formatTimeRange(sale.start_time, sale.end_time)}
-              </p>
-              <div className="my-listing-actions">
-                <button type="button" className="chip" onClick={() => setEditingSale(sale)}>
-                  Edit
-                </button>
-                {sale.status === 'approved' && (
-                  <ShareToFacebookButton
-                    url={`${SITE_URL}/listing/${sale.id}`}
-                    quote={sale.title}
-                    className="chip"
-                    label="Share"
-                  />
+          listings.map((sale) => {
+            const isCurrentlyFeatured = Boolean(
+              sale.featured && sale.featured_until && sale.featured_until >= toDateKey(new Date())
+            );
+            return (
+              <div className="my-listing-card" key={sale.id}>
+                <div className={`status-badge ${sale.status}`}>{STATUS_LABEL[sale.status] || sale.status}</div>
+                <p className="card-title">{sale.title}</p>
+                <p className="card-addr">{sale.address}</p>
+                <p className="card-addr">
+                  {formatDateRange(sale.sale_date, sale.end_date)} · {formatTimeRange(sale.start_time, sale.end_time)}
+                </p>
+                {isCurrentlyFeatured && (
+                  <p className="featured-status">⭐ Featured until {sale.featured_until}</p>
                 )}
-                <button type="button" className="chip danger" onClick={() => handleDelete(sale)}>
-                  Delete
-                </button>
+                {sale.status === 'pending' && !isCurrentlyFeatured && (
+                  <p className="hint" style={{ margin: '4px 0 0' }}>
+                    Waiting on review — or pay $10 to feature it and skip the wait, live right away.
+                  </p>
+                )}
+                <div className="my-listing-actions">
+                  <button type="button" className="chip" onClick={() => setEditingSale(sale)}>
+                    Edit
+                  </button>
+                  {sale.status === 'approved' && (
+                    <ShareToFacebookButton
+                      url={`${SITE_URL}/listing/${sale.id}`}
+                      quote={sale.title}
+                      className="chip"
+                      label="Share"
+                    />
+                  )}
+                  {sale.status !== 'rejected' && !isCurrentlyFeatured && (
+                    <button
+                      type="button"
+                      className="chip featured-chip"
+                      disabled={featuringId === sale.id}
+                      onClick={() => handleFeature(sale)}
+                    >
+                      {featuringId === sale.id
+                        ? 'Starting checkout…'
+                        : sale.status === 'pending'
+                        ? '⭐ Skip Wait & Feature — $10'
+                        : '⭐ Feature — $10'}
+                    </button>
+                  )}
+                  <button type="button" className="chip danger" onClick={() => handleDelete(sale)}>
+                    Delete
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
       </div>
     </>
   );

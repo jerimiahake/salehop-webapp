@@ -10,7 +10,7 @@ export default function SaleCard({ sale, favorited, routeNum, onClick, onToggleF
   const dateRange = sale.sale_date ? formatDateRange(sale.sale_date, sale.end_date) : null;
 
   return (
-    <div className={`card ${favorited ? 'favorited' : ''}`} onClick={onClick}>
+    <div className={`card ${favorited ? 'favorited' : ''} ${sale.isFeatured ? 'featured' : ''}`} onClick={onClick}>
       {favorited && <div className="route-num">{routeNum}</div>}
       <div className="thumb" style={{ background: favorited ? '#e4f0e6' : '#faf1d8' }}>
         {cover ? (
@@ -27,6 +27,7 @@ export default function SaleCard({ sale, favorited, routeNum, onClick, onToggleF
           {Number.isFinite(sale.distance) ? ` · ${sale.distance.toFixed(1)} mi` : ''}
         </p>
         <div className="card-meta">
+          {sale.isFeatured && <span className="featured-badge">⭐ Featured</span>}
           {dateRange && <span className="time-badge mono">{dateRange}</span>}
           <span className="time-badge mono">{time}</span>
           {(sale.tags || []).map((t) => (
