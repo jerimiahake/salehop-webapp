@@ -262,15 +262,16 @@ export default function AccountScreen({ session, showToast, onEditingChange }) {
               sale.featured && sale.featured_until && sale.featured_until >= toDateKey(new Date())
             );
             return (
-              <div className="my-listing-card" key={sale.id}>
+              <div className={`my-listing-card ${isCurrentlyFeatured ? 'featured' : ''}`} key={sale.id}>
                 <div className={`status-badge ${sale.status}`}>{STATUS_LABEL[sale.status] || sale.status}</div>
+                {isCurrentlyFeatured && <div className="status-badge featured-pill">⭐ Featured</div>}
                 <p className="card-title">{sale.title}</p>
                 <p className="card-addr">{sale.address}</p>
                 <p className="card-addr">
                   {formatDateRange(sale.sale_date, sale.end_date)} · {formatTimeRange(sale.start_time, sale.end_time)}
                 </p>
                 {isCurrentlyFeatured && (
-                  <p className="featured-status">⭐ Featured until {sale.featured_until}</p>
+                  <p className="featured-status">Featured until {sale.featured_until}</p>
                 )}
                 {sale.status === 'pending' && !isCurrentlyFeatured && (
                   <p className="hint" style={{ margin: '4px 0 0' }}>
