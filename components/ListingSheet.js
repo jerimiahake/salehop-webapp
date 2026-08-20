@@ -146,7 +146,10 @@ export default function ListingSheet({ sale, favorited, onToggleFavorite, onClos
                   {time && <span className="time-badge mono">{time}</span>}
                 </div>
               </div>
-              <div className="sheet-actions">
+              <div
+                className="sheet-actions"
+                onPointerDown={(e) => e.stopPropagation()}
+              >
                 <ShareButton url={`${SITE_URL}/listing/${activeSale.id}`} title={activeSale.title} />
                 <button
                   type="button"
