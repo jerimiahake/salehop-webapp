@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 // A round icon-only share button for buyers browsing a sale (not just the
 // seller who posted it) -- separate from ShareToFacebookButton, which is
@@ -36,7 +36,7 @@ export default function ShareButton({ url, title, className, label = 'Share this
 
   return (
     <button type="button" className={className || 'sheet-share'} onClick={handleShare} aria-label={label}>
-      â†—
+      ↗
     </button>
   );
 }

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import { formatTimeRange, formatDateRange } from '@/lib/format';
@@ -134,14 +134,14 @@ export default function ListingSheet({ sale, favorited, onToggleFavorite, onClos
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={cover} alt="" />
                 ) : (
-                  activeSale.icon || 'ðŸ·ï¸'
+                  activeSale.icon || '🏷️'
                 )}
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <p className="card-title">{activeSale.title}</p>
                 <p className="card-addr">{activeSale.address}</p>
                 <div className="card-meta">
-                  {activeSale.isFeatured && <span className="featured-badge">â­ Featured</span>}
+                  {activeSale.isFeatured && <span className="featured-badge">⭐ Featured</span>}
                   {dateRange && <span className="time-badge mono">{dateRange}</span>}
                   {time && <span className="time-badge mono">{time}</span>}
                 </div>
@@ -157,19 +157,19 @@ export default function ListingSheet({ sale, favorited, onToggleFavorite, onClos
                   }}
                   aria-label={favorited ? 'Remove from route' : 'Add to route'}
                 >
-                  â˜…
+                  ★
                 </button>
               </div>
             </div>
             <div className="expand-hint">
-              {mode === 'full' ? 'â–¼ drag or tap to collapse â–¼' : 'â–² drag or tap to expand â–²'}
+              {mode === 'full' ? '▼ drag or tap to collapse ▼' : '▲ drag or tap to expand ▲'}
             </div>
           </div>
 
           <div className="sheet-scroll">
             {activeSale.is_neighborhood_sale && activeSale.neighborhood_name && (
               <div className="neighborhood-badge" style={{ cursor: 'default', marginTop: 0, marginBottom: 12 }}>
-                ðŸ˜ï¸ Part of {activeSale.neighborhood_name}
+                🏘️ Part of {activeSale.neighborhood_name}
               </div>
             )}
 
