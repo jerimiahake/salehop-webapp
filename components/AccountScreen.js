@@ -9,7 +9,14 @@ import ShareToFacebookButton from './ShareToFacebookButton';
 
 const STATUS_LABEL = { pending: 'Pending Review', approved: 'Live', rejected: 'Not Approved' };
 
-export default function AccountScreen({ session, showToast, onEditingChange, passwordRecovery, onPasswordRecoveryDone }) {
+export default function AccountScreen({
+  session,
+  showToast,
+  onEditingChange,
+  passwordRecovery,
+  onPasswordRecoveryDone,
+  onOpenSale,
+}) {
   const [email, setEmail] = useState('');
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -642,7 +649,7 @@ export default function AccountScreen({ session, showToast, onEditingChange, pas
                 key={sale.id}
                 onClick={() => {
                   if (canPreview) {
-                    window.open(`/listing/${sale.id}`, '_blank', 'noopener,noreferrer');
+                    onOpenSale?.(sale.id);
                   } else {
                     showToast?.("This listing isn't live yet, so there's no public page to preview -- it'll be viewable here once it's approved.");
                   }

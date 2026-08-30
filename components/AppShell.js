@@ -296,6 +296,18 @@ export default function AppShell() {
   );
 
   function openSaleOnMap(id) {
+    // Map only shows/finds sales that pass the current day filter + search
+    // box (see filteredSales above) -- fine when you tapped a card that was
+    // already showing on Browse, but a listing opened from Account (e.g. a
+    // seller previewing their own sale) might run on a day that isn't
+    // currently selected, or get hidden by leftover search text. Clear the
+    // search and make sure the sale's own date is one of the selected days
+    // so it's guaranteed to actually be there when the sheet opens.
+    const sale = sales.find((s) => s.id === id);
+    setSearchQuery('');
+    if (sale) {
+      setSelectedDates((prev) => (prev.includes(sale.sale_date) ? prev : [...prev, sale.sale_date]));
+    }
     setSelectedSaleId(id);
     setActiveScreen('map');
   }
@@ -367,6 +379,7 @@ export default function AppShell() {
             onEditingChange={setEditingListing}
             passwordRecovery={passwordRecovery}
             onPasswordRecoveryDone={() => setPasswordRecovery(false)}
+            onOpenSale={openSaleOnMap}
           />
         </div>
       </div>
