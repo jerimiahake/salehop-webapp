@@ -37,7 +37,7 @@ function posterGrid(orientation) {
 }
 
 export default function SignBuilder({ sale, qrSvg }) {
-  const [orientation, setOrientation] = useState('portrait');
+  const [orientation, setOrientation] = useState('landscape');
   const [arrowId, setArrowId] = useState('right');
   const [paperId, setPaperId] = useState('letter');
 
@@ -164,12 +164,9 @@ export default function SignBuilder({ sale, qrSvg }) {
             </p>
 
             {arrow.id !== 'none' && (
-              <>
-                <div className="sign-arrow" style={{ transform: `rotate(${arrow.deg}deg)` }}>
-                  ➜
-                </div>
-                <p className="sign-arrow-hint">Tip: circle or trace an arrow above with a marker to point the way.</p>
-              </>
+              <div className="sign-arrow" style={{ transform: `rotate(${arrow.deg}deg)` }}>
+                ➜
+              </div>
             )}
 
             <div className="sign-qr" dangerouslySetInnerHTML={{ __html: qrSvg }} />
