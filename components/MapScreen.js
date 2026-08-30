@@ -24,6 +24,8 @@ export default function MapScreen({
   onOpenSaved,
   center,
   active = true,
+  session,
+  onManageListing,
 }) {
   const mapWrapRef = useRef(null);
   const selectedSale = sales.find((s) => s.id === selectedSaleId);
@@ -50,6 +52,8 @@ export default function MapScreen({
         onToggleFavorite={onToggleFavorite}
         onClose={() => onSelectSale(null)}
         containerRef={mapWrapRef}
+        session={session}
+        onManage={onManageListing}
       />
 
       {!selectedSale && favoritedSales.length > 0 && (

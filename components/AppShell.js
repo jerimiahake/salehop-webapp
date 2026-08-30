@@ -32,6 +32,11 @@ export default function AppShell() {
   const [toast, setToast] = useState(null);
   const [session, setSession] = useState(null);
   const [editingListing, setEditingListing] = useState(false);
+  // Set true when Supabase reports a PASSWORD_RECOVERY event (the visitor
+  // clicked a "reset your password" email link) -- routes them straight to
+  // Account's "set a new password" form instead of the normal signed-in
+  // view, even though that click also gave them a valid session.
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
 
   const showToast = useCallback((message) => {
     setToast({ message, key: Date.now() });
@@ -48,11 +53,39 @@ export default function AppShell() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
+      if (event === 'PASSWORD_RECOVERY') {
+        setPasswordRecovery(true);
+        setActiveScreen('account');
+      }
     });
 
     return () => subscription.unsubscribe();
+  }, []);
+
+  // Backup for the "sign in from a second tab" flow (see the email-link
+  // splash at app/auth/callback/page.js): Supabase's client already syncs
+  // a new sign-in across same-browser tabs on its own, so this is normally
+  // redundant -- but re-checking whenever someone actually switches back
+  // to this tab costs nothing and catches it even if that sync didn't
+  // fire for some reason, which is exactly the moment a visitor cares
+  // about seeing themselves signed in here.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return undefined;
+
+    function recheckSession() {
+      if (document.visibilityState === 'visible') {
+        supabase.auth.getSession().then(({ data }) => setSession(data.session));
+      }
+    }
+
+    document.addEventListener('visibilitychange', recheckSession);
+    window.addEventListener('focus', recheckSession);
+    return () => {
+      document.removeEventListener('visibilitychange', recheckSession);
+      window.removeEventListener('focus', recheckSession);
+    };
   }, []);
 
   // Load sales (from Supabase once configured, sample data until then).
@@ -304,6 +337,11 @@ export default function AppShell() {
             onOpenSaved={() => setActiveScreen('saved')}
             center={referenceLocation}
             active={activeScreen === 'map'}
+            session={session}
+            onManageListing={() => {
+              setSelectedSaleId(null);
+              setActiveScreen('account');
+            }}
           />
         </div>
         <div className={`screen ${activeScreen === 'post' ? 'active' : ''}`}>
@@ -323,7 +361,13 @@ export default function AppShell() {
           />
         </div>
         <div className={`screen ${activeScreen === 'account' ? 'active' : ''}`}>
-          <AccountScreen session={session} showToast={showToast} onEditingChange={setEditingListing} />
+          <AccountScreen
+            session={session}
+            showToast={showToast}
+            onEditingChange={setEditingListing}
+            passwordRecovery={passwordRecovery}
+            onPasswordRecoveryDone={() => setPasswordRecovery(false)}
+          />
         </div>
       </div>
 

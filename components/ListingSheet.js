@@ -24,7 +24,7 @@ const TAP_THRESHOLD_PX = 6; // pointer movement under this counts as a tap, not 
 // always rendered (even before any sale has ever been selected) so
 // sheetRef.current already exists the first time a sale opens -- otherwise
 // that very first open couldn't animate in.
-export default function ListingSheet({ sale, favorited, onToggleFavorite, onClose, containerRef }) {
+export default function ListingSheet({ sale, favorited, onToggleFavorite, onClose, containerRef, session, onManage }) {
   const sheetRef = useRef(null);
   const [activeSale, setActiveSale] = useState(sale || null);
   const [mode, setMode] = useState('closed'); // 'closed' | 'half' | 'full'
@@ -110,6 +110,12 @@ export default function ListingSheet({ sale, favorited, onToggleFavorite, onClos
     settle(currentPx > midpoint ? 'full' : 'half');
   }
 
+  // Lets a signed-in seller jump straight to Account -> My Listings (full
+  // Edit/Delete/Print Sign/Feature controls already live there) when
+  // they're looking at their own listing here on the map, instead of
+  // duplicating all of those actions inside this compact preview.
+  const isOwner = Boolean(session?.user?.id && activeSale?.user_id && session.user.id === activeSale.user_id);
+
   const cover = activeSale?.photo_urls && activeSale.photo_urls.length > 0 ? activeSale.photo_urls[0] : null;
   const dateRange = activeSale?.sale_date ? formatDateRange(activeSale.sale_date, activeSale.end_date) : null;
   const time = activeSale
@@ -150,6 +156,20 @@ export default function ListingSheet({ sale, favorited, onToggleFavorite, onClos
                 className="sheet-actions"
                 onPointerDown={(e) => e.stopPropagation()}
               >
+                {isOwner && (
+                  <button
+                    type="button"
+                    className="sheet-share"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onManage?.();
+                    }}
+                    aria-label="Manage this listing"
+                    title="Manage this listing"
+                  >
+                    🛠️
+                  </button>
+                )}
                 <ShareButton url={`${SITE_URL}/listing/${activeSale.id}`} title={activeSale.title} />
                 <button
                   type="button"
