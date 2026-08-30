@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
@@ -76,7 +76,16 @@ export default function AccountScreen({ session, showToast, onEditingChange }) {
       if (error) throw error;
       setSent(true);
     } catch (err) {
-      setAuthError(err.message || 'Something went wrong sending your link.');
+      const msg = err.message || 'Something went wrong sending your link.';
+      setAuthError(msg);
+      // Best-effort: lets Jerimiah see in /admin that a signup failed, even
+      // though the visitor never tells him directly. Never lets a logging
+      // hiccup surface as a second error on top of the real one above.
+      fetch('/api/log-error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'signup', message: msg, email: email.trim() }),
+      }).catch(() => {});
     } finally {
       setSending(false);
     }
@@ -261,8 +270,19 @@ export default function AccountScreen({ session, showToast, onEditingChange }) {
             const isCurrentlyFeatured = Boolean(
               sale.featured && sale.featured_until && sale.featured_until >= toDateKey(new Date())
             );
+            const canPreview = sale.status === 'approved';
             return (
-              <div className={`my-listing-card ${isCurrentlyFeatured ? 'featured' : ''}`} key={sale.id}>
+              <div
+                className={`my-listing-card ${isCurrentlyFeatured ? 'featured' : ''} ${canPreview ? 'clickable' : ''}`}
+                key={sale.id}
+                onClick={() => {
+                  if (canPreview) {
+                    window.open(`/listing/${sale.id}`, '_blank', 'noopener,noreferrer');
+                  } else {
+                    showToast?.("This listing isn't live yet, so there's no public page to preview -- it'll be viewable here once it's approved.");
+                  }
+                }}
+              >
                 <div className={`status-badge ${sale.status}`}>{STATUS_LABEL[sale.status] || sale.status}</div>
                 {isCurrentlyFeatured && <div className="status-badge featured-pill">⭐ Featured</div>}
                 <p className="card-title">{sale.title}</p>
@@ -278,7 +298,7 @@ export default function AccountScreen({ session, showToast, onEditingChange }) {
                     Waiting on review — or pay $10 to feature it and skip the wait, live right away.
                   </p>
                 )}
-                <div className="my-listing-actions">
+                <div className="my-listing-actions" onClick={(e) => e.stopPropagation()}>
                   <button type="button" className="chip" onClick={() => setEditingSale(sale)}>
                     Edit
                   </button>
@@ -289,6 +309,16 @@ export default function AccountScreen({ session, showToast, onEditingChange }) {
                       className="chip"
                       label="Share"
                     />
+                  )}
+                  {sale.status === 'approved' && (
+                    <a
+                      className="chip"
+                      href={`/listing/${sale.id}/sign`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      🖨️ Print Sign
+                    </a>
                   )}
                   {sale.status !== 'rejected' && (
                     <button
@@ -313,6 +343,12 @@ export default function AccountScreen({ session, showToast, onEditingChange }) {
               </div>
             );
           })}
+
+        <div style={{ marginTop: 24, textAlign: 'center' }}>
+          <a className="hint" href="/contact" style={{ textDecoration: 'underline' }}>
+            Need help? Contact us
+          </a>
+        </div>
       </div>
     </>
   );

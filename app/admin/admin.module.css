@@ -1,4 +1,4 @@
-﻿.loginWrap {
+.loginWrap {
   min-height: 100vh;
   display: flex;
   align-items: center;
@@ -308,6 +308,12 @@
 .sectionHeading {
   font-size: 18px;
   margin: 32px 0 14px;
+}
+
+.subHeading {
+  font-size: 14.5px;
+  margin: 20px 0 10px;
+  color: #5a5346;
 }
 
 .typeToggle {

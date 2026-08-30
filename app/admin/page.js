@@ -1,10 +1,11 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState } from 'react';
 import styles from './admin.module.css';
 import ListingForm from '@/components/ListingForm';
 import AdForm from '@/components/AdForm';
 import { formatDateRange } from '@/lib/format';
+import { geocodeAddress } from '@/lib/geocode';
 
 const STATUS_FILTERS = ['all', 'pending', 'approved', 'rejected'];
 
@@ -43,6 +44,14 @@ export default function AdminPage() {
   const [importResult, setImportResult] = useState(null);
   const [importError, setImportError] = useState(null);
 
+  const [errorReports, setErrorReports] = useState([]);
+  const [errorReportsLoading, setErrorReportsLoading] = useState(false);
+  const [errorReportsError, setErrorReportsError] = useState(null);
+
+  const [contactMessages, setContactMessages] = useState([]);
+  const [contactMessagesLoading, setContactMessagesLoading] = useState(false);
+  const [contactMessagesError, setContactMessagesError] = useState(null);
+
   useEffect(() => {
     loadSales();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -52,6 +61,8 @@ export default function AdminPage() {
     if (authed) {
       loadAds();
       loadTags();
+      loadErrorReports();
+      loadContactMessages();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed]);
@@ -141,6 +152,93 @@ export default function AdminPage() {
       setTags((list) => list.filter((t) => t.id !== tag.id));
     } catch (err) {
       setTagsError(err.message);
+    }
+  }
+
+  // ---------- Support: error reports + contact messages ----------
+  async function loadErrorReports() {
+    setErrorReportsLoading(true);
+    setErrorReportsError(null);
+    try {
+      const res = await fetch('/api/admin/error-reports');
+      if (res.status === 401) return;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load error reports.');
+      setErrorReports(data);
+    } catch (err) {
+      setErrorReportsError(err.message);
+    } finally {
+      setErrorReportsLoading(false);
+    }
+  }
+
+  async function loadContactMessages() {
+    setContactMessagesLoading(true);
+    setContactMessagesError(null);
+    try {
+      const res = await fetch('/api/admin/contact-messages');
+      if (res.status === 401) return;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load contact messages.');
+      setContactMessages(data);
+    } catch (err) {
+      setContactMessagesError(err.message);
+    } finally {
+      setContactMessagesLoading(false);
+    }
+  }
+
+  async function toggleErrorResolved(report) {
+    try {
+      const res = await fetch(`/api/admin/error-reports/${report.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolved: !report.resolved }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Update failed.');
+      setErrorReports((list) => list.map((r) => (r.id === report.id ? data : r)));
+    } catch (err) {
+      setMessage(`Couldn't update: ${err.message}`);
+    }
+  }
+
+  async function handleDeleteErrorReport(report) {
+    if (!window.confirm("Delete this error report? This can't be undone.")) return;
+    try {
+      const res = await fetch(`/api/admin/error-reports/${report.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Delete failed.');
+      setErrorReports((list) => list.filter((r) => r.id !== report.id));
+    } catch (err) {
+      setMessage(`Couldn't delete: ${err.message}`);
+    }
+  }
+
+  async function toggleContactResolved(msg) {
+    try {
+      const res = await fetch(`/api/admin/contact-messages/${msg.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolved: !msg.resolved }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Update failed.');
+      setContactMessages((list) => list.map((m) => (m.id === msg.id ? data : m)));
+    } catch (err) {
+      setMessage(`Couldn't update: ${err.message}`);
+    }
+  }
+
+  async function handleDeleteContactMessage(msg) {
+    if (!window.confirm("Delete this message? This can't be undone.")) return;
+    try {
+      const res = await fetch(`/api/admin/contact-messages/${msg.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Delete failed.');
+      setContactMessages((list) => list.filter((m) => m.id !== msg.id));
+    } catch (err) {
+      setMessage(`Couldn't delete: ${err.message}`);
     }
   }
 
@@ -320,6 +418,8 @@ export default function AdminPage() {
       link_url: ad.link_url || '',
       sponsor_name: ad.sponsor_name || '',
       html_snippet: ad.html_snippet || '',
+      location_type: ad.location_type || 'online',
+      address: ad.address || '',
     });
   }
 
@@ -330,7 +430,31 @@ export default function AdminPage() {
 
   async function saveEditAd(ad) {
     try {
-      const updated = await updateAd(ad.id, editAdDraft);
+      const draft = { ...editAdDraft };
+
+      if (draft.location_type === 'physical') {
+        if (!draft.address.trim()) {
+          setMessage("Couldn't save: a physical-location ad needs an address.");
+          return;
+        }
+        // Re-geocode any time it's saved as physical -- cheap, and the
+        // only way to know the coordinates still match if the address
+        // text changed. Harmless (just a fraction of a second slower) on
+        // a save where the address didn't change.
+        const location = await geocodeAddress(draft.address.trim());
+        if (!location) {
+          setMessage("Couldn't save: couldn't find that address on the map. Double-check it and try again.");
+          return;
+        }
+        draft.lat = location.lat;
+        draft.lng = location.lng;
+      } else {
+        draft.address = null;
+        draft.lat = null;
+        draft.lng = null;
+      }
+
+      const updated = await updateAd(ad.id, draft);
       setAds((list) => list.map((a) => (a.id === ad.id ? updated : a)));
       setMessage(`Saved changes to "${updated.title}".`);
       cancelEditAd();
@@ -649,6 +773,30 @@ export default function AdminPage() {
                   onChange={(e) => setEditAdDraft((d) => ({ ...d, description: e.target.value }))}
                   placeholder="Description"
                 />
+                <div className={styles.typeToggle}>
+                  <button
+                    type="button"
+                    className={`${styles.typeToggleBtn} ${editAdDraft.location_type === 'online' ? styles.typeToggleBtnActive : ''}`}
+                    onClick={() => setEditAdDraft((d) => ({ ...d, location_type: 'online' }))}
+                  >
+                    Online Only
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.typeToggleBtn} ${editAdDraft.location_type === 'physical' ? styles.typeToggleBtnActive : ''}`}
+                    onClick={() => setEditAdDraft((d) => ({ ...d, location_type: 'physical' }))}
+                  >
+                    Physical Location
+                  </button>
+                </div>
+                {editAdDraft.location_type === 'physical' && (
+                  <input
+                    className={styles.input}
+                    value={editAdDraft.address}
+                    onChange={(e) => setEditAdDraft((d) => ({ ...d, address: e.target.value }))}
+                    placeholder="Address"
+                  />
+                )}
                 {ad.ad_type === 'snippet' ? (
                   <textarea
                     className={styles.codeTextarea}
@@ -697,6 +845,9 @@ export default function AdminPage() {
                         ? `Sponsored by ${ad.sponsor_name}`
                         : ad.link_url}
                     </p>
+                    {ad.location_type === 'physical' && (
+                      <p className={styles.rowSub}>📍 {ad.address}{!Number.isFinite(ad.lat) ? ' (not located on the map)' : ''}</p>
+                    )}
                   </div>
                 </div>
                 <div className={styles.actions}>
@@ -753,6 +904,82 @@ export default function AdminPage() {
               ✕
             </button>
           </span>
+        ))}
+      </div>
+
+      <h2 className={styles.sectionHeading}>Support</h2>
+      <p className={styles.hint}>
+        Signup and listing-submission failures are logged automatically, so you can see if visitors are running
+        into trouble even if they never tell you directly. Contact messages come from the public /contact page --
+        each one also tries to email the admin address; if that email fails, the message is still saved here as a
+        backup.
+      </p>
+
+      <h3 className={styles.subHeading}>Signup / Listing Errors</h3>
+      {errorReportsError && <div className={styles.bannerError}>{errorReportsError}</div>}
+      {errorReportsLoading && <p className={styles.hint}>Loading…</p>}
+      {!errorReportsLoading && errorReports.length === 0 && <p className={styles.hint}>No errors logged. 🎉</p>}
+
+      <div className={styles.list}>
+        {errorReports.map((report) => (
+          <div className={styles.row} key={report.id}>
+            <div className={styles.rowMain}>
+              <span className={`${styles.badge} ${report.resolved ? styles.badge_approved : styles.badge_pending}`}>
+                {report.kind}
+              </span>
+              <div>
+                <p className={styles.rowTitle}>{report.message}</p>
+                <p className={styles.rowSub}>
+                  {new Date(report.created_at).toLocaleString()}
+                  {report.email ? ` · ${report.email}` : ''}
+                </p>
+                {report.context && <p className={styles.rowSub}>{JSON.stringify(report.context)}</p>}
+              </div>
+            </div>
+            <div className={styles.actions}>
+              <button type="button" className={styles.linkButton} onClick={() => toggleErrorResolved(report)}>
+                {report.resolved ? 'Mark Unresolved' : 'Mark Resolved'}
+              </button>
+              <button type="button" className={styles.linkButtonDanger} onClick={() => handleDeleteErrorReport(report)}>
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <h3 className={styles.subHeading}>Contact Messages</h3>
+      {contactMessagesError && <div className={styles.bannerError}>{contactMessagesError}</div>}
+      {contactMessagesLoading && <p className={styles.hint}>Loading…</p>}
+      {!contactMessagesLoading && contactMessages.length === 0 && <p className={styles.hint}>No messages yet.</p>}
+
+      <div className={styles.list}>
+        {contactMessages.map((msg) => (
+          <div className={styles.row} key={msg.id}>
+            <div className={styles.rowMain}>
+              <span className={`${styles.badge} ${msg.resolved ? styles.badge_approved : styles.badge_pending}`}>
+                {msg.resolved ? 'resolved' : 'new'}
+              </span>
+              <div>
+                <p className={styles.rowTitle}>{msg.name ? `${msg.name} · ${msg.email}` : msg.email}</p>
+                <p className={styles.rowSub}>{msg.message}</p>
+                <p className={styles.rowSub}>
+                  {new Date(msg.created_at).toLocaleString()} · {msg.email_sent ? '✅ emailed' : '⚠️ email not sent'}
+                </p>
+              </div>
+            </div>
+            <div className={styles.actions}>
+              <a className={styles.linkButton} href={`mailto:${msg.email}`}>
+                Reply
+              </a>
+              <button type="button" className={styles.linkButton} onClick={() => toggleContactResolved(msg)}>
+                {msg.resolved ? 'Mark Unresolved' : 'Mark Resolved'}
+              </button>
+              <button type="button" className={styles.linkButtonDanger} onClick={() => handleDeleteContactMessage(msg)}>
+                Delete
+              </button>
+            </div>
+          </div>
         ))}
       </div>
     </div>

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import dynamic from 'next/dynamic';
 import { useRef } from 'react';
@@ -15,6 +15,7 @@ const LeafletMap = dynamic(() => import('./LeafletMap'), {
 
 export default function MapScreen({
   sales,
+  ads,
   favorites,
   selectedSaleId,
   onSelectSale,
@@ -31,6 +32,7 @@ export default function MapScreen({
     <div className="map-wrap" ref={mapWrapRef}>
       <LeafletMap
         sales={sales}
+        ads={ads}
         favorites={favorites}
         selectedSaleId={selectedSaleId}
         onSelectSale={onSelectSale}

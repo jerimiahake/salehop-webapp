@@ -48,7 +48,7 @@ export default function SavedScreen({ favoritedSales, onRemove, onMove, showToas
         {favoritedSales.length === 0 ? (
           <div className="empty-state">
             <div className="big">★</div>
-            Tap the star on any sale to add it to your route. We&apos;ll map the shortest path between your stops.
+            Tap the star on any sale or store to add it to your route. We&apos;ll map the shortest path between your stops.
           </div>
         ) : (
           <>
@@ -78,9 +78,12 @@ export default function SavedScreen({ favoritedSales, onRemove, onMove, showToas
                 </div>
                 <div className="n">{i + 1}</div>
                 <div className="stop-body">
-                  <p className="stop-title">{sale.title}</p>
+                  <p className="stop-title">{sale.isAd ? '🏬 ' : ''}{sale.title}</p>
                   <p className="stop-addr">
-                    {sale.address} · {sale.time || formatTimeRange(sale.start_time, sale.end_time)}
+                    {sale.address}
+                    {/* An ad stop is a store, not a one-time event -- no start/end
+                        time to show the way a garage sale has. */}
+                    {!sale.isAd ? ` · ${sale.time || formatTimeRange(sale.start_time, sale.end_time)}` : ''}
                   </p>
                 </div>
                 <button type="button" className="remove" onClick={() => onRemove(sale.id)} aria-label="Remove stop">

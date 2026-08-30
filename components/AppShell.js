@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
@@ -232,9 +232,34 @@ export default function AppShell() {
       });
   }, [sales, selectedDates, searchQuery, referenceLocation]);
 
+  // Favorites are just a flat list of ids -- can be a sale OR a
+  // favoritable physical-location ad (see components/AdCard.js). This
+  // normalizes an ad into the same {id, title, address, lat, lng} shape
+  // SavedScreen/LeafletMap/mapsExport already expect from a sale, tagged
+  // `isAd` so the route list can show it a little differently (no
+  // date/time -- a store doesn't run on a single sale_date the way a
+  // garage sale does).
   const favoritedSales = useMemo(
-    () => favorites.map((id) => sales.find((s) => s.id === id)).filter(Boolean),
-    [favorites, sales]
+    () =>
+      favorites
+        .map((id) => {
+          const sale = sales.find((s) => s.id === id);
+          if (sale) return sale;
+          const ad = ads.find((a) => a.id === id);
+          if (ad) {
+            return {
+              id: ad.id,
+              title: ad.title,
+              address: ad.address,
+              lat: ad.lat,
+              lng: ad.lng,
+              isAd: true,
+            };
+          }
+          return null;
+        })
+        .filter(Boolean),
+    [favorites, sales, ads]
   );
 
   function openSaleOnMap(id) {
@@ -270,6 +295,7 @@ export default function AppShell() {
         <div className={`screen ${activeScreen === 'map' ? 'active' : ''}`}>
           <MapScreen
             sales={filteredSales}
+            ads={ads}
             favorites={favorites}
             selectedSaleId={selectedSaleId}
             onSelectSale={setSelectedSaleId}

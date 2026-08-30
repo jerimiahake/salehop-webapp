@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
@@ -471,7 +471,22 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
         });
       }
     } catch (err) {
-      setError(err.message || 'Something went wrong saving your sale.');
+      const msg = err.message || 'Something went wrong saving your sale.';
+      setError(msg);
+      // Best-effort: lets Jerimiah see in /admin that a listing submission
+      // failed partway through, even though the seller never reports it
+      // themselves. Never lets a logging hiccup surface as a second error
+      // on top of the real one above.
+      fetch('/api/log-error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'listing',
+          message: msg,
+          email: session?.user?.email || null,
+          context: { title: form.title, address: form.address, mode },
+        }),
+      }).catch(() => {});
     } finally {
       setSubmitting(false);
     }
@@ -508,6 +523,9 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
               <ShareToFacebookButton url={`${SITE_URL}/listing/${justCreated.id}`} quote={justCreated.title} />
               <a className="chip" style={{ textAlign: 'center' }} href={`/listing/${justCreated.id}`} target="_blank" rel="noopener noreferrer">
                 View Listing Page ↗
+              </a>
+              <a className="chip" style={{ textAlign: 'center' }} href={`/listing/${justCreated.id}/sign`} target="_blank" rel="noopener noreferrer">
+                🖨️ Print a Sign
               </a>
             </div>
           )}

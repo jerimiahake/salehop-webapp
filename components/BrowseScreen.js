@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import SaleCard from './SaleCard';
 import AdCard from './AdCard';
@@ -39,6 +39,12 @@ export default function BrowseScreen({
   onOpenSale,
 }) {
   let routeIdx = 0;
+  // The same physical-location ad can appear more than once in a long
+  // feed (buildFeed cycles through `ads` every AD_INTERVAL items) -- this
+  // remembers the route number already assigned to a favorited ad the
+  // first time it showed up, so a repeat further down the list shows the
+  // same number instead of counting itself again.
+  const seenAdRouteNum = new Map();
   const feed = buildFeed(sales, ads);
 
   return (
@@ -116,7 +122,26 @@ export default function BrowseScreen({
           !loadError &&
           feed.map((item) => {
             if (item.type === 'ad') {
-              return <AdCard key={item.key} ad={item.ad} />;
+              const adFavorited = favorites.includes(item.ad.id);
+              let adRouteNum = null;
+              if (adFavorited) {
+                if (seenAdRouteNum.has(item.ad.id)) {
+                  adRouteNum = seenAdRouteNum.get(item.ad.id);
+                } else {
+                  routeIdx += 1;
+                  adRouteNum = routeIdx;
+                  seenAdRouteNum.set(item.ad.id, adRouteNum);
+                }
+              }
+              return (
+                <AdCard
+                  key={item.key}
+                  ad={item.ad}
+                  favorited={adFavorited}
+                  routeNum={adRouteNum}
+                  onToggleFavorite={onToggleFavorite}
+                />
+              );
             }
             const sale = item.sale;
             const favorited = favorites.includes(sale.id);

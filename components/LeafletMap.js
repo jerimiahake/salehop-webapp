@@ -1,15 +1,15 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
-function makePinIcon({ favorited, selected, routeNum }) {
+function makePinIcon({ favorited, selected, routeNum, isAd }) {
   const label = routeNum ? routeNum : favorited ? '' : '●';
   return L.divIcon({
     className: 'sale-pin-wrapper',
     html: `
-      <div class="sale-pin ${favorited ? 'favorited' : ''} ${selected ? 'selected' : ''}">
+      <div class="sale-pin ${favorited ? 'favorited' : ''} ${selected ? 'selected' : ''} ${isAd ? 'ad-stop' : ''}">
         <div class="sign">${label}</div>
         <div class="stick"></div>
       </div>
@@ -48,10 +48,39 @@ function InvalidateOnShow({ active }) {
   return null;
 }
 
-export default function LeafletMap({ sales, favorites, selectedSaleId, onSelectSale, center, active = true, interactive = true }) {
+export default function LeafletMap({
+  sales,
+  ads = [],
+  favorites,
+  selectedSaleId,
+  onSelectSale,
+  center,
+  active = true,
+  interactive = true,
+}) {
+  // Physical-location ads (e.g. a Goodwill, a Habitat ReStore -- see
+  // components/AdCard.js) only ever show up on this map once favorited --
+  // per that design choice, an ad never gets a plain always-visible pin
+  // the way a sale does, only a route pin once it's actually on someone's
+  // route. `sales` (below) is intentionally NOT filtered by favorites --
+  // every sale always gets a pin, favorited or not.
+  const favoritedAdStops = useMemo(
+    () =>
+      (ads || []).filter(
+        (a) => a.location_type === 'physical' && favorites.includes(a.id) && Number.isFinite(a.lat) && Number.isFinite(a.lng)
+      ),
+    [ads, favorites]
+  );
+
+  // The dashed route line needs every favorited stop -- sale or ad -- in
+  // the order they were actually added (favorites is a flat list of ids
+  // that already interleaves both), not just sales.
   const routeStops = useMemo(
-    () => favorites.map((id) => sales.find((s) => s.id === id)).filter((s) => s && Number.isFinite(s.lat)),
-    [favorites, sales]
+    () =>
+      favorites
+        .map((id) => sales.find((s) => s.id === id) || (ads || []).find((a) => a.id === id))
+        .filter((s) => s && Number.isFinite(s.lat) && Number.isFinite(s.lng)),
+    [favorites, sales, ads]
   );
 
   const polylinePositions = routeStops.map((s) => [s.lat, s.lng]);
@@ -99,6 +128,19 @@ export default function LeafletMap({ sales, favorites, selectedSaleId, onSelectS
             />
           );
         })}
+
+      {favoritedAdStops.map((ad) => (
+        <Marker
+          key={ad.id}
+          position={[ad.lat, ad.lng]}
+          icon={makePinIcon({
+            favorited: true,
+            selected: false,
+            routeNum: favorites.indexOf(ad.id) + 1,
+            isAd: true,
+          })}
+        />
+      ))}
     </MapContainer>
   );
 }

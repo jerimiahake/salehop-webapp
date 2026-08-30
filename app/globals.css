@@ -188,6 +188,14 @@ body.admin-mode {
 .sale-pin.favorited .sign { background: var(--green); color: #fff; border-color: #3d5f45; }
 .sale-pin.favorited .stick { background: #3d5f45; }
 .sale-pin.selected .sign { transform: translateY(-3px) scale(1.12); }
+/* A favorited physical-location ad (a Goodwill, a Habitat ReStore -- see
+   components/AdCard.js) on the route -- same numbered-sign shape as a
+   favorited sale, but a distinct blue so it doesn't read as "just another
+   garage sale" on a map that can now show both. Only ever rendered once
+   favorited (see LeafletMap.js) -- there's no unfavorited/always-on state
+   for this pin the way a sale has one. */
+.sale-pin.ad-stop .sign { background: #3B6FB0; color: #fff; border-color: #24518f; }
+.sale-pin.ad-stop .stick { background: #24518f; }
 
 /* ---------- LISTING SHEET (draggable, over the map) ---------- */
 /* Replaces the old static ".map-peek" card. Tapping a sale (from Browse,
@@ -374,6 +382,32 @@ textarea { resize: vertical; min-height: 80px; }
 }
 .fb-share-btn:hover { background: #1567d3; }
 
+/* Nextdoor's Share Plugin popup button -- same shape as .fb-share-btn,
+   Nextdoor's own brand green instead of Facebook blue. */
+.nd-share-btn {
+  background: #19975D; color: #fff; border: none; padding: 13px 16px; border-radius: 12px;
+  font-weight: 700; font-size: 13.5px; cursor: pointer; font-family: inherit; width: 100%;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.nd-share-btn:hover { background: #147a4b; }
+
+/* The single native-share-sheet button shown on touch devices in place of
+   the Facebook/Nextdoor pair below -- same shape, neutral ink color since
+   it isn't tied to one specific platform anymore. */
+.native-share-btn {
+  background: var(--ink); color: var(--paper); border: none; padding: 13px 16px; border-radius: 12px;
+  font-weight: 700; font-size: 13.5px; cursor: pointer; font-family: inherit; width: 100%;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.native-share-btn:hover { background: #34302a; }
+
+/* Wraps the Facebook + Nextdoor buttons side by side on desktop (where
+   there's no native share sheet to fall back to a single button for).
+   Overrides their standalone width:100% so they split the row evenly
+   instead of each trying to fill it alone. */
+.share-row { display: flex; gap: 10px; }
+.share-row .fb-share-btn, .share-row .nd-share-btn { width: auto; flex: 1; }
+
 /* ---------- POST SUCCESS / SHARE PANEL ---------- */
 .share-success { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 50px; }
 .share-success-icon { font-size: 46px; margin-bottom: 14px; }
@@ -397,6 +431,36 @@ textarea { resize: vertical; min-height: 80px; }
 .share-empty { padding: 40px 24px; text-align: center; color: var(--ink-soft); font-size: 13.5px; }
 .share-empty .big { font-size: 38px; margin-bottom: 12px; }
 .share-home-btn { display: inline-block; text-decoration: none; margin-top: 16px; width: auto; padding: 12px 22px; }
+
+/* ---------- PRINTABLE GARAGE SALE SIGN (/listing/[id]/sign) ---------- */
+.sign-page { width: 100%; max-width: 480px; padding: 24px 16px 60px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.sign-print-btn {
+  background: var(--yellow); color: var(--ink); border: none; padding: 14px 24px; border-radius: 14px;
+  font-weight: 700; font-size: 14.5px; cursor: pointer; font-family: inherit; width: 100%; max-width: 340px;
+}
+.sign-sheet {
+  background: #fff; border: 3px solid var(--ink); border-radius: 18px; padding: 32px 24px;
+  width: 100%; max-width: 480px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+}
+.sign-logo { font-size: 22px; color: var(--yellow-deep); margin-bottom: 14px; }
+.sign-logo span { color: var(--ink); }
+.sign-title { font-size: 26px; font-weight: 800; margin: 0 0 14px; line-height: 1.2; }
+.sign-addr { font-size: 18px; font-weight: 700; color: var(--ink); margin: 0 0 10px; }
+.sign-datetime { font-size: 16px; color: var(--ink-soft); margin: 0 0 18px; line-height: 1.5; }
+.sign-arrow { font-size: 44px; margin: 4px 0 6px; }
+.sign-arrow-hint { font-size: 11px; color: var(--ink-soft); margin: 0 0 18px; }
+.sign-qr { display: flex; justify-content: center; margin-bottom: 10px; }
+.sign-qr svg { width: 200px; height: 200px; }
+.sign-qr-caption { font-size: 13px; color: var(--ink-soft); margin: 0 0 4px; }
+.sign-brand { font-size: 15px; font-weight: 700; color: var(--yellow-deep); margin: 0; }
+.sign-page-notfound { padding: 60px 24px; text-align: center; color: var(--ink-soft); max-width: 420px; }
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff !important; padding: 0 !important; display: block !important; }
+  .sign-page { padding: 0; max-width: none; gap: 0; }
+  .sign-sheet { box-shadow: none; border: 4px solid #000; max-width: none; width: 100%; page-break-inside: avoid; }
+}
 
 /* ---------- TOAST ---------- */
 .toast {
