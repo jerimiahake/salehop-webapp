@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { sampleSales, MAP_CENTER } from '@/lib/sampleData';
 import { nextNDays, distanceMiles, toDateKey, dateInRange } from '@/lib/format';
+import { SITE_URL } from '@/lib/site';
 import BrowseScreen from './BrowseScreen';
 import MapScreen from './MapScreen';
 import PostScreen from './PostScreen';
@@ -11,6 +12,7 @@ import SavedScreen from './SavedScreen';
 import AccountScreen from './AccountScreen';
 import BottomNav from './BottomNav';
 import Toast from './Toast';
+import ShareToFacebookButton from './ShareToFacebookButton';
 
 const FAVORITES_KEY = 'salehop:favorites';
 
@@ -37,6 +39,28 @@ export default function AppShell() {
   // Account's "set a new password" form instead of the normal signed-in
   // view, even though that click also gave them a valid session.
   const [passwordRecovery, setPasswordRecovery] = useState(false);
+
+  // A seller's own listings (every status, not just approved -- unlike
+  // `sales` above) plus the shared edit/feature/delete state for them.
+  // These used to live inside AccountScreen, but the Map screen's "Manage"
+  // menu (see manageMenuSale below) needs to trigger the exact same
+  // actions on a listing without necessarily being on the Account screen,
+  // so the data and the mutations that touch it live here and get passed
+  // down to both AccountScreen and the manage menu.
+  const [listings, setListings] = useState([]);
+  const [listingsLoading, setListingsLoading] = useState(false);
+  const [listingsLoadError, setListingsLoadError] = useState(null);
+  const [listingsRefreshKey, setListingsRefreshKey] = useState(0);
+  const [editingSale, setEditingSale] = useState(null);
+  // id of whichever listing's "Feature — $10" button was just tapped, so
+  // only that one button/menu shows a loading state while checkout starts.
+  const [featuringId, setFeaturingId] = useState(null);
+  // Which listing (if any) is showing the small Edit/Print/Feature/
+  // Share/Delete action menu, opened from the wrench button on the Map
+  // screen's preview sheet (see ListingSheet's onManage). Rendered at this
+  // top level (like Toast below) rather than inside the sheet itself, so
+  // it isn't clipped by the sheet's/map's own overflow:hidden.
+  const [manageMenuSale, setManageMenuSale] = useState(null);
 
   const showToast = useCallback((message) => {
     setToast({ message, key: Date.now() });
@@ -89,37 +113,71 @@ export default function AppShell() {
   }, []);
 
   // Load sales (from Supabase once configured, sample data until then).
+  // Pulled out to a stable function (rather than only living inside the
+  // mount effect below) so a listing edit/delete/feature can also trigger
+  // a fresh load, keeping Browse/Map in sync with changes made from the
+  // Account screen or the Map's manage menu without needing a full reload.
+  const loadSales = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      setSales(sampleSales);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('sales')
+      .select('*')
+      .eq('status', 'approved')
+      .order('sale_date', { ascending: true });
+
+    if (error) {
+      setLoadError(error.message);
+      setSales([]);
+    } else {
+      setSales(data || []);
+    }
+    setLoading(false);
+  }, []);
+
   useEffect(() => {
+    loadSales();
+  }, [loadSales]);
+
+  // Load the signed-in seller's own listings -- every status (pending,
+  // approved, rejected), not just approved like `sales` above. Used by
+  // AccountScreen's "My Listings" list and by the Map screen's manage menu
+  // (to know a listing's current feature/status when deciding what the
+  // menu should show).
+  useEffect(() => {
+    if (!session || !isSupabaseConfigured) {
+      setListings([]);
+      return undefined;
+    }
     let cancelled = false;
 
-    async function loadSales() {
-      if (!isSupabaseConfigured) {
-        setSales(sampleSales);
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
+    async function loadListings() {
+      setListingsLoading(true);
       const { data, error } = await supabase
         .from('sales')
         .select('*')
-        .eq('status', 'approved')
-        .order('sale_date', { ascending: true });
+        .eq('user_id', session.user.id)
+        .order('sale_date', { ascending: false });
 
       if (cancelled) return;
       if (error) {
-        setLoadError(error.message);
-        setSales([]);
+        setListingsLoadError(error.message);
       } else {
-        setSales(data || []);
+        setListingsLoadError(null);
+        setListings(data || []);
       }
-      setLoading(false);
+      setListingsLoading(false);
     }
 
-    loadSales();
+    loadListings();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [session, listingsRefreshKey]);
 
   // Load active ads (sponsored cards mixed into Browse). Not critical if
   // this fails or Supabase isn't configured yet -- the app just shows no
@@ -312,6 +370,84 @@ export default function AppShell() {
     setActiveScreen('map');
   }
 
+  // Shared "manage this listing" actions -- used by AccountScreen's My
+  // Listings row AND the Map screen's manage menu below, so a seller gets
+  // the same Edit/Feature/Delete regardless of where they opened a
+  // listing from.
+
+  function isSaleCurrentlyFeatured(sale) {
+    return Boolean(sale?.featured && sale?.featured_until && sale.featured_until >= toDateKey(new Date()));
+  }
+
+  async function handleDeleteSale(sale) {
+    const confirmed = window.confirm(`Delete "${sale.title}"? This can't be undone.`);
+    if (!confirmed) return;
+    try {
+      const { error: deleteError } = await supabase.from('sales').delete().eq('id', sale.id);
+      if (deleteError) throw deleteError;
+
+      // Best-effort cleanup of any uploaded photos -- not critical if it fails.
+      if (sale.photo_urls && sale.photo_urls.length > 0) {
+        const paths = sale.photo_urls.map((url) => url.split('/sale-photos/')[1]).filter(Boolean);
+        if (paths.length > 0) {
+          supabase.storage.from('sale-photos').remove(paths).catch(() => {});
+        }
+      }
+
+      setListings((ls) => ls.filter((l) => l.id !== sale.id));
+      setSales((ss) => ss.filter((s) => s.id !== sale.id));
+      if (selectedSaleId === sale.id) setSelectedSaleId(null);
+      if (manageMenuSale?.id === sale.id) setManageMenuSale(null);
+      showToast('Listing deleted.');
+    } catch (err) {
+      showToast(`Couldn't delete that listing: ${err.message}`);
+    }
+  }
+
+  // Starts a Stripe Checkout Session for pinning this listing to the top
+  // of Browse for $10, then redirects the whole tab to Stripe's hosted
+  // checkout page. The listing doesn't actually get marked featured until
+  // the Stripe webhook confirms payment server-side (see
+  // app/api/stripe/webhook/route.js) -- this only ever starts checkout.
+  async function handleFeatureSale(sale) {
+    setFeaturingId(sale.id);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) throw new Error('Please sign in again.');
+
+      const res = await fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ sale_id: sale.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not start checkout.');
+      window.location.href = data.url;
+    } catch (err) {
+      showToast(`Couldn't start checkout: ${err.message}`);
+      setFeaturingId(null);
+    }
+  }
+
+  function handleEditSale(sale) {
+    setManageMenuSale(null);
+    setSelectedSaleId(null);
+    setEditingSale(sale);
+    setActiveScreen('account');
+  }
+
+  function handleCancelEdit() {
+    setEditingSale(null);
+  }
+
+  function handleEditDone(message) {
+    setEditingSale(null);
+    setListingsRefreshKey((k) => k + 1);
+    loadSales();
+    showToast(message);
+  }
+
   function handlePublished(message) {
     setActiveScreen('browse');
     showToast(message || '🎉 Thanks! Your sale was submitted and is awaiting a quick review before it goes live.');
@@ -350,10 +486,7 @@ export default function AppShell() {
             center={referenceLocation}
             active={activeScreen === 'map'}
             session={session}
-            onManageListing={() => {
-              setSelectedSaleId(null);
-              setActiveScreen('account');
-            }}
+            onManageListing={(sale) => setManageMenuSale(sale)}
           />
         </div>
         <div className={`screen ${activeScreen === 'post' ? 'active' : ''}`}>
@@ -380,6 +513,16 @@ export default function AppShell() {
             passwordRecovery={passwordRecovery}
             onPasswordRecoveryDone={() => setPasswordRecovery(false)}
             onOpenSale={openSaleOnMap}
+            listings={listings}
+            listingsLoading={listingsLoading}
+            listingsLoadError={listingsLoadError}
+            editingSale={editingSale}
+            onEditSale={handleEditSale}
+            onCancelEdit={handleCancelEdit}
+            onEditDone={handleEditDone}
+            onDeleteSale={handleDeleteSale}
+            onFeatureSale={handleFeatureSale}
+            featuringId={featuringId}
           />
         </div>
       </div>
@@ -391,6 +534,65 @@ export default function AppShell() {
         hidden={editingListing}
       />
       <Toast toast={toast} />
+
+      {manageMenuSale && (
+        <div className="manage-menu-backdrop" onClick={() => setManageMenuSale(null)}>
+          <div className="manage-menu" onClick={(e) => e.stopPropagation()}>
+            <div className="manage-menu-title">{manageMenuSale.title}</div>
+
+            <button
+              type="button"
+              className="manage-menu-item"
+              onClick={() => handleEditSale(manageMenuSale)}
+            >
+              ✏️ Edit Listing
+            </button>
+
+            <a
+              className="manage-menu-item"
+              href={`/listing/${manageMenuSale.id}/sign`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setManageMenuSale(null)}
+            >
+              🖨️ Print Sign
+            </a>
+
+            <button
+              type="button"
+              className="manage-menu-item"
+              disabled={featuringId === manageMenuSale.id || isSaleCurrentlyFeatured(manageMenuSale)}
+              onClick={() => handleFeatureSale(manageMenuSale)}
+            >
+              {isSaleCurrentlyFeatured(manageMenuSale)
+                ? '✓ Currently Featured'
+                : featuringId === manageMenuSale.id
+                ? 'Starting checkout…'
+                : '⭐ Feature — $10'}
+            </button>
+
+            <div className="manage-menu-item manage-menu-share" onClick={() => setManageMenuSale(null)}>
+              <ShareToFacebookButton
+                url={`${SITE_URL}/listing/${manageMenuSale.id}`}
+                quote={manageMenuSale.title}
+                label="Share"
+              />
+            </div>
+
+            <button
+              type="button"
+              className="manage-menu-item danger"
+              onClick={() => handleDeleteSale(manageMenuSale)}
+            >
+              🗑️ Delete
+            </button>
+
+            <button type="button" className="manage-menu-cancel" onClick={() => setManageMenuSale(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

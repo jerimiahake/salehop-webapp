@@ -16,6 +16,21 @@ export default function AccountScreen({
   passwordRecovery,
   onPasswordRecoveryDone,
   onOpenSale,
+  // Listings + editing/featuring/deleting all live in AppShell now, not
+  // here -- the same "manage this listing" actions also need to work from
+  // the Map screen's sheet (see the manage menu in AppShell.js), so the
+  // data and the mutations that touch it live one level up and get shared
+  // by both places instead of being duplicated.
+  listings = [],
+  listingsLoading = false,
+  listingsLoadError = null,
+  editingSale,
+  onEditSale,
+  onCancelEdit,
+  onEditDone,
+  onDeleteSale,
+  onFeatureSale,
+  featuringId,
 }) {
   const [email, setEmail] = useState('');
   const [sending, setSending] = useState(false);
@@ -56,17 +71,6 @@ export default function AccountScreen({
   const [recoverySaving, setRecoverySaving] = useState(false);
   const [recoveryError, setRecoveryError] = useState(null);
 
-  const [listings, setListings] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState(null);
-  const [editingSale, setEditingSale] = useState(null);
-  // Bumped after a delete/edit completes to trigger a refetch below, without
-  // needing loadListings itself in the effect's dependency array.
-  const [refreshKey, setRefreshKey] = useState(0);
-  // id of whichever listing's "Feature — $10" button was just tapped, so
-  // only that one button shows a loading state while checkout starts.
-  const [featuringId, setFeaturingId] = useState(null);
-
   // Let AppShell know whether we're mid-edit, so it can hide the bottom nav
   // the same way it does during Post -- tapping away mid-edit would
   // otherwise silently discard unsaved changes.
@@ -74,34 +78,6 @@ export default function AccountScreen({
     onEditingChange?.(Boolean(editingSale));
     return () => onEditingChange?.(false);
   }, [editingSale, onEditingChange]);
-
-  useEffect(() => {
-    if (!session || !isSupabaseConfigured) return;
-    let cancelled = false;
-
-    async function loadListings() {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('sales')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .order('sale_date', { ascending: false });
-
-      if (cancelled) return;
-      if (error) {
-        setLoadError(error.message);
-      } else {
-        setLoadError(null);
-        setListings(data || []);
-      }
-      setLoading(false);
-    }
-
-    loadListings();
-    return () => {
-      cancelled = true;
-    };
-  }, [session, refreshKey]);
 
   async function handleSendLink() {
     if (!email.trim()) return;
@@ -238,64 +214,13 @@ export default function AccountScreen({
 
   async function handleSignOut() {
     await supabase.auth.signOut();
-    setListings([]);
     setSent(false);
     setEmail('');
   }
 
-  async function handleDelete(sale) {
-    const confirmed = window.confirm(`Delete "${sale.title}"? This can't be undone.`);
-    if (!confirmed) return;
-    try {
-      const { error: deleteError } = await supabase.from('sales').delete().eq('id', sale.id);
-      if (deleteError) throw deleteError;
-
-      // Best-effort cleanup of any uploaded photos -- not critical if it fails.
-      if (sale.photo_urls && sale.photo_urls.length > 0) {
-        const paths = sale.photo_urls.map((url) => url.split('/sale-photos/')[1]).filter(Boolean);
-        if (paths.length > 0) {
-          supabase.storage.from('sale-photos').remove(paths).catch(() => {});
-        }
-      }
-
-      setListings((ls) => ls.filter((l) => l.id !== sale.id));
-      showToast?.('Listing deleted.');
-    } catch (err) {
-      showToast?.(`Couldn't delete that listing: ${err.message}`);
-    }
-  }
-
-  function handleEditDone(message) {
-    setEditingSale(null);
-    setRefreshKey((k) => k + 1);
-    showToast?.(message);
-  }
-
-  // Starts a Stripe Checkout Session for pinning this listing to the top
-  // of Browse for $10, then redirects the whole tab to Stripe's hosted
-  // checkout page. The listing doesn't actually get marked featured until
-  // the Stripe webhook confirms payment server-side (see
-  // app/api/stripe/webhook/route.js) -- this only ever starts checkout.
-  async function handleFeature(sale) {
-    setFeaturingId(sale.id);
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData?.session?.access_token;
-      if (!token) throw new Error('Please sign in again.');
-
-      const res = await fetch('/api/stripe/create-checkout-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ sale_id: sale.id }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Could not start checkout.');
-      window.location.href = data.url;
-    } catch (err) {
-      showToast?.(`Couldn't start checkout: ${err.message}`);
-      setFeaturingId(null);
-    }
-  }
+  // Delete/Feature/Edit for a listing all live in AppShell now (onDeleteSale
+  // / onFeatureSale / onEditSale props) so the same "manage this listing"
+  // actions also work from the Map screen's manage menu, not just here.
 
   // ---------- Password recovery: clicked a "reset password" email link ----------
   if (session && passwordRecovery) {
@@ -354,8 +279,8 @@ export default function AccountScreen({
         mode="edit"
         session={session}
         initialSale={editingSale}
-        onCancel={() => setEditingSale(null)}
-        onDone={handleEditDone}
+        onCancel={() => onCancelEdit?.()}
+        onDone={onEditDone}
       />
     );
   }
@@ -618,26 +543,26 @@ export default function AccountScreen({
 
         <div className="sidebar-label" style={{ marginTop: 18 }}>My Listings</div>
 
-        {loading && <div className="empty-state">Loading your listings…</div>}
+        {listingsLoading && <div className="empty-state">Loading your listings…</div>}
 
-        {!loading && loadError && (
+        {!listingsLoading && listingsLoadError && (
           <div className="empty-state">
             <div className="big">⚠️</div>
             Couldn&apos;t load your listings right now.
             <br />
-            {loadError}
+            {listingsLoadError}
           </div>
         )}
 
-        {!loading && !loadError && listings.length === 0 && (
+        {!listingsLoading && !listingsLoadError && listings.length === 0 && (
           <div className="empty-state">
             <div className="big">📋</div>
             You haven&apos;t posted any sales yet. Tap Post below to get started.
           </div>
         )}
 
-        {!loading &&
-          !loadError &&
+        {!listingsLoading &&
+          !listingsLoadError &&
           listings.map((sale) => {
             const isCurrentlyFeatured = Boolean(
               sale.featured && sale.featured_until && sale.featured_until >= toDateKey(new Date())
@@ -671,7 +596,7 @@ export default function AccountScreen({
                   </p>
                 )}
                 <div className="my-listing-actions" onClick={(e) => e.stopPropagation()}>
-                  <button type="button" className="chip" onClick={() => setEditingSale(sale)}>
+                  <button type="button" className="chip" onClick={() => onEditSale?.(sale)}>
                     Edit
                   </button>
                   {sale.status === 'approved' && (
@@ -697,7 +622,7 @@ export default function AccountScreen({
                       type="button"
                       className="chip featured-chip"
                       disabled={featuringId === sale.id || isCurrentlyFeatured}
-                      onClick={() => handleFeature(sale)}
+                      onClick={() => onFeatureSale?.(sale)}
                     >
                       {isCurrentlyFeatured
                         ? '✓ Currently Featured'
@@ -708,7 +633,7 @@ export default function AccountScreen({
                         : '⭐ Feature — $10'}
                     </button>
                   )}
-                  <button type="button" className="chip danger" onClick={() => handleDelete(sale)}>
+                  <button type="button" className="chip danger" onClick={() => onDeleteSale?.(sale)}>
                     Delete
                   </button>
                 </div>

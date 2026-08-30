@@ -1,8 +1,7 @@
 import QRCode from 'qrcode';
 import { getSaleForShare } from '@/lib/getSaleForShare';
-import { formatTimeRange, formatDateRange } from '@/lib/format';
 import { SITE_URL } from '@/lib/site';
-import PrintButton from './PrintButton';
+import SignBuilder from './SignBuilder';
 
 // A print-friendly yard sign for one approved sale: big title, address,
 // date/time, and a QR code straight to this sale's real listing page
@@ -38,28 +37,7 @@ export default async function SignPage({ params }) {
 
   return (
     <div className="sign-page">
-      <PrintButton />
-
-      <div className="sign-sheet">
-        <div className="sign-logo marker-font">
-          Sale<span>Hop</span>
-        </div>
-
-        <h1 className="sign-title">{sale.title}</h1>
-        <p className="sign-addr">📍 {sale.address}</p>
-        <p className="sign-datetime">
-          {formatDateRange(sale.sale_date, sale.end_date)}
-          <br />
-          {formatTimeRange(sale.start_time, sale.end_time)}
-        </p>
-
-        <div className="sign-arrow">➜</div>
-        <p className="sign-arrow-hint">Tip: circle or trace an arrow above with a marker to point the way.</p>
-
-        <div className="sign-qr" dangerouslySetInnerHTML={{ __html: qrSvg }} />
-        <p className="sign-qr-caption">Scan for photos, full details &amp; directions</p>
-        <p className="sign-brand">salehop.app</p>
-      </div>
+      <SignBuilder sale={sale} qrSvg={qrSvg} />
     </div>
   );
 }

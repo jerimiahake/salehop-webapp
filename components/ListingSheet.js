@@ -110,10 +110,12 @@ export default function ListingSheet({ sale, favorited, onToggleFavorite, onClos
     settle(currentPx > midpoint ? 'full' : 'half');
   }
 
-  // Lets a signed-in seller jump straight to Account -> My Listings (full
-  // Edit/Delete/Print Sign/Feature controls already live there) when
-  // they're looking at their own listing here on the map, instead of
-  // duplicating all of those actions inside this compact preview.
+  // Lets a signed-in seller manage their own listing right from this
+  // preview -- tapping the wrench opens a small action menu (Edit, Print
+  // Sign, Feature, Share, Delete) rendered by AppShell, over top of
+  // whichever screen this sheet happens to be open on (Map, or a preview
+  // opened from My Listings) -- see onManage/manageMenuSale in
+  // AppShell.js.
   const isOwner = Boolean(session?.user?.id && activeSale?.user_id && session.user.id === activeSale.user_id);
 
   const cover = activeSale?.photo_urls && activeSale.photo_urls.length > 0 ? activeSale.photo_urls[0] : null;
@@ -162,7 +164,7 @@ export default function ListingSheet({ sale, favorited, onToggleFavorite, onClos
                     className="sheet-share"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onManage?.();
+                      onManage?.(activeSale);
                     }}
                     aria-label="Manage this listing"
                     title="Manage this listing"
