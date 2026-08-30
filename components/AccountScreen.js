@@ -410,7 +410,7 @@ export default function AccountScreen({ session, showToast, onEditingChange, pas
                   <>
                     <p className="hint" style={{ marginBottom: 12 }}>
                       Enter your email and we&apos;ll send you a link to set a new password. (This part still has to
-                      go through email — but it's only needed the rare time you forget one.)
+                      go through email — but it&apos;s only needed the rare time you forget one.)
                     </p>
                     <input
                       className="text-input"
@@ -512,7 +512,7 @@ export default function AccountScreen({ session, showToast, onEditingChange, pas
                 <p className="hint" style={{ marginBottom: 12 }}>
                   Enter your email and we&apos;ll send you a one-click sign-in link — no password to remember. (Heads
                   up: some mail apps open this link in their own built-in browser instead of your regular one — if
-                  that happens and things look off, set a password instead once you're in.)
+                  that happens and things look off, set a password instead once you&apos;re in.)
                 </p>
                 <input
                   className="text-input"
