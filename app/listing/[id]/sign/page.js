@@ -2,6 +2,7 @@ import QRCode from 'qrcode';
 import { getSaleForShare } from '@/lib/getSaleForShare';
 import { SITE_URL } from '@/lib/site';
 import SignBuilder from './SignBuilder';
+import SignBodyClass from './SignBodyClass';
 
 // A print-friendly yard sign for one approved sale: big title, address,
 // date/time, and a QR code straight to this sale's real listing page
@@ -18,9 +19,12 @@ export default async function SignPage({ params }) {
 
   if (!sale) {
     return (
-      <div className="sign-page-notfound">
-        <p>This listing isn&apos;t available to print a sign for — it may have been removed or isn&apos;t approved yet.</p>
-      </div>
+      <>
+        <SignBodyClass />
+        <div className="sign-page-notfound">
+          <p>This listing isn&apos;t available to print a sign for — it may have been removed or isn&apos;t approved yet.</p>
+        </div>
+      </>
     );
   }
 
@@ -36,8 +40,11 @@ export default async function SignPage({ params }) {
   });
 
   return (
-    <div className="sign-page">
-      <SignBuilder sale={sale} qrSvg={qrSvg} />
-    </div>
+    <>
+      <SignBodyClass />
+      <div className="sign-page">
+        <SignBuilder sale={sale} qrSvg={qrSvg} />
+      </div>
+    </>
   );
 }

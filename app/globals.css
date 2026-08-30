@@ -72,6 +72,23 @@ body.admin-mode {
   background: #f4f1ea;
 }
 
+/* ---------- SIGN BUILDER PAGE OVERRIDE ---------- */
+/* Same idea as body.admin-mode above -- swap out the phone-frame's
+   vertical centering for a normal top-anchored, scrollable layout while
+   the sign page (/listing/[id]/sign) is mounted (see SignBodyClass.js).
+   This one matters more than most: the sign builder's height changes a
+   lot as you switch orientation/paper size (especially the 6-tile "Large
+   Sign" mode), and a flex-centered child taller than its container
+   overflows equally above AND below its box -- but a page can only ever
+   scroll DOWN to reach content, never up past the top, so whatever
+   landed above the fold that way (the Orientation toggle, most often)
+   became permanently unreachable. Top-anchoring means nothing can ever
+   end up above where scrolling can reach. */
+body.sign-mode {
+  align-items: flex-start;
+  padding: 24px 16px;
+}
+
 /* ---------- SCREENS ---------- */
 .app-screens { flex: 1; position: relative; overflow: hidden; }
 .screen { position: absolute; inset: 0; display: none; flex-direction: column; background: var(--paper); }
@@ -446,29 +463,60 @@ textarea { resize: vertical; min-height: 80px; }
 .sign-options-label:first-child { margin-top: 0; }
 .sign-options-row { display: flex; flex-wrap: wrap; gap: 8px; }
 
-/* .sign-sheet's printed size is driven by --paper-w-in/--paper-h-in
-   (plain numbers, set inline from SignBuilder's orientation + paper-size
-   choice) -- aspect-ratio keeps the on-screen preview proportioned the
-   same way; @media print below swaps that for the sheet's true inch
-   dimensions plus a matching @page rule (injected inline by SignBuilder)
-   so "Print"/"Save as PDF" defaults to the right page size. */
+/* .sign-sheet's printed size is driven by --paper-w-in/--paper-h-in (plain
+   numbers, set inline from SignBuilder's orientation + paper-size choice).
+   It's given its TRUE printed size in real inches (not a responsive
+   aspect-ratio) and then shrunk to fit a phone screen with `zoom` --
+   `zoom` (unlike transform:scale) actually changes the element's layout
+   box, so .sign-page's flex column reserves the right amount of space and
+   nothing overlaps or gets clipped. An aspect-ratio was tried first, but
+   .sign-sheet is a flex item of .sign-page, and a flex item's default
+   min-height:auto resolves to its CONTENT's height, which silently
+   overrode the aspect-ratio-computed height -- every paper size ended up
+   looking identical on screen. True inches + zoom sidesteps that
+   entirely, the same technique .poster-wrap already used below. The zoom
+   factor is computed live from --paper-w-in so a fixed ~320px on-screen
+   width holds no matter which paper size or orientation is picked (1in
+   == 96px is the CSS spec's fixed definition, not a guess). @media print
+   resets zoom back to 1 so the real inches take over for actual printing. */
 .sign-sheet {
   background: #fff; border: 3px solid var(--ink); border-radius: 18px; padding: 32px 24px;
-  width: 100%; max-width: 480px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.3);
-  aspect-ratio: var(--paper-w-in) / var(--paper-h-in); margin: 0 auto; box-sizing: border-box;
+  width: calc(var(--paper-w-in) * 1in); height: calc(var(--paper-h-in) * 1in);
+  zoom: calc(320 / (var(--paper-w-in) * 96));
+  text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+  margin: 0 auto; box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: center;
 }
-.sign-logo { font-size: 22px; color: var(--yellow-deep); margin-bottom: 14px; }
+/* Centers the logo/title/address/arrow block vertically within whatever
+   height this paper size ends up being, while the footer below stays
+   pinned to the bottom (flex:1 here soaks up the extra space either way). */
+.sign-sheet-inner { flex: 1; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.sign-logo { font-size: 22px; color: var(--yellow-deep); margin-bottom: 6px; }
 .sign-logo span { color: var(--ink); }
-.sign-title { font-size: 26px; font-weight: 800; margin: 0 0 14px; line-height: 1.2; }
+.sign-tagline { font-size: 11px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; color: var(--ink-soft); margin: 0 0 18px; }
+.sign-tagline .dot { color: var(--yellow-deep); margin: 0 2px; }
+.sign-kicker { font-size: 15px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; color: var(--yellow-deep); margin: 0 0 4px; }
+.sign-title { font-size: 30px; font-weight: 800; margin: 0 0 16px; line-height: 1.15; }
 .sign-addr { font-size: 18px; font-weight: 700; color: var(--ink); margin: 0 0 10px; }
-.sign-datetime { font-size: 16px; color: var(--ink-soft); margin: 0 0 18px; line-height: 1.5; }
-.sign-arrow { font-size: 44px; margin: 4px 0 6px; display: inline-block; }
-.sign-arrow-hint { font-size: 11px; color: var(--ink-soft); margin: 0 0 18px; }
-.sign-qr { display: flex; justify-content: center; margin-bottom: 10px; }
-.sign-qr svg { width: 200px; height: 200px; }
-.sign-qr-caption { font-size: 13px; color: var(--ink-soft); margin: 0 0 4px; }
-.sign-brand { font-size: 15px; font-weight: 700; color: var(--yellow-deep); margin: 0; }
+.sign-datetime { font-size: 16px; color: var(--ink-soft); margin: 0 0 16px; line-height: 1.5; }
+.sign-arrow { width: 76px; height: 46px; margin: 2px 0 4px; }
 .sign-page-notfound { padding: 60px 24px; text-align: center; color: var(--ink-soft); max-width: 420px; }
+
+/* Custom chunky arrow shape (a plain SVG path, reused at different sizes
+   by the single sheet and the poster) -- crisper and more consistent
+   across browsers/printers than the Unicode "➜" glyph, which renders
+   with a different weight and shape depending on the system font. */
+.sign-arrow svg, .poster-arrow svg { display: block; width: 100%; height: 100%; }
+.sign-arrow svg path, .poster-arrow svg path { fill: var(--yellow-deep); stroke: var(--ink); stroke-width: 4; stroke-linejoin: round; }
+
+/* Footer: QR + a short "how to use it" caption, pinned below the centered
+   content above as one unit no matter how tall that content ends up. */
+.sign-footer { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; padding-top: 14px; margin-top: 6px; border-top: 2px dashed var(--line); }
+.sign-footer .sign-qr svg { width: 82px; height: 82px; display: block; }
+.sign-footer-info { display: flex; align-items: center; gap: 9px; text-align: left; }
+.sign-footer-icon { width: 38px; height: 38px; border-radius: 50%; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.sign-footer-caption { font-size: 12px; color: var(--ink-soft); line-height: 1.35; margin: 0; }
+.sign-brand-pill { display: inline-block; margin-top: 12px; background: var(--ink); color: #fff; font-weight: 700; font-size: 13px; padding: 6px 20px; border-radius: 999px; letter-spacing: 0.3px; }
 
 /* "Large Sign" mode: 6 ordinary letter sheets that together form one big
    poster (see posterGrid() in SignBuilder.js). Every measurement here is
@@ -524,26 +572,62 @@ textarea { resize: vertical; min-height: 80px; }
   height: calc(var(--tile-h-in) * var(--rows) * 1in);
   display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
 }
-.poster-logo { font-size: 1.2in; color: var(--yellow-deep); margin-bottom: 0.3in; }
+.poster-logo { font-size: 1.2in; color: var(--yellow-deep); margin-bottom: 0.15in; }
 .poster-logo span { color: var(--ink); }
-.poster-arrow { font-size: 6in; line-height: 1; margin-bottom: 0.3in; display: inline-block; }
-.poster-title { font-size: 1.7in; font-weight: 800; margin: 0 0 0.2in; line-height: 1.1; padding: 0 0.4in; }
+.poster-tagline { font-size: 0.34in; font-weight: 700; letter-spacing: 0.08in; text-transform: uppercase; color: var(--ink-soft); margin: 0 0 0.45in; }
+.poster-tagline .dot { color: var(--yellow-deep); margin: 0 0.06in; }
+.poster-kicker { font-size: 0.55in; font-weight: 800; letter-spacing: 0.12in; text-transform: uppercase; color: var(--yellow-deep); margin: 0 0 0.1in; }
+.poster-arrow { width: 5in; height: 3in; margin: 0.1in auto 0.4in; }
+.poster-title { font-size: 1.6in; font-weight: 800; margin: 0 0 0.2in; line-height: 1.1; padding: 0 0.4in; }
 .poster-addr { font-size: 1in; font-weight: 700; color: var(--ink); margin: 0 0 0.15in; padding: 0 0.4in; }
 .poster-datetime { font-size: 0.8in; color: var(--ink-soft); margin: 0 0 0.3in; line-height: 1.4; }
-.poster-qr { margin-bottom: 0.1in; }
-.poster-qr svg { width: 2in; height: 2in; }
-.poster-brand { font-size: 0.5in; font-weight: 700; color: var(--yellow-deep); margin: 0; }
+
+/* The QR/scan footer (+ brand pill) is deliberately pulled OUT of the
+   centered stack above and pinned to the poster canvas's bottom-right
+   corner instead of flowing with everything else. The bottom-right
+   corner of the full canvas is always inside the SINGLE last tile (row
+   rows-1, col cols-1) no matter the grid shape -- so anchoring here, with
+   enough inset margin that the whole footer block fits inside one
+   8.5x11 tile, guarantees the QR code never lands across a seam between
+   two taped-together sheets. A QR split across sheets may not scan if
+   the cutting/taping isn't perfectly precise, so this isn't just
+   cosmetic. */
+.poster-footer-wrap {
+  position: absolute; right: 0.5in; bottom: 0.5in;
+  display: flex; flex-direction: column; align-items: center; gap: 0.12in;
+}
+.poster-footer {
+  display: flex; align-items: center; gap: 0.2in;
+  background: #fff; padding: 0.25in; border-radius: 0.15in; border: 3px solid var(--ink);
+}
+.poster-footer .poster-qr svg { width: 1.9in; height: 1.9in; display: block; }
+.poster-footer-info { display: flex; align-items: center; gap: 0.18in; text-align: left; }
+.poster-footer-icon { width: 0.7in; height: 0.7in; border-radius: 50%; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.35in; flex-shrink: 0; }
+.poster-footer-caption { font-size: 0.24in; color: var(--ink-soft); line-height: 1.35; margin: 0; max-width: 1.6in; }
+.poster-brand-pill { display: inline-block; background: var(--ink); color: #fff; font-weight: 700; font-size: 0.26in; padding: 0.1in 0.35in; border-radius: 999px; }
 
 @media print {
   .no-print { display: none !important; }
   body { background: #fff !important; padding: 0 !important; display: block !important; }
   .sign-page { padding: 0; max-width: none; gap: 0; }
   .sign-sheet {
-    box-shadow: none; border: 4px solid #000; max-width: none; aspect-ratio: auto;
+    box-shadow: none; border: 4px solid #000; max-width: none;
     width: calc(var(--paper-w-in) * 1in); height: calc(var(--paper-h-in) * 1in);
+    zoom: 1;
     page-break-inside: avoid;
   }
-  .poster-wrap { zoom: 1 !important; }
+  /* .poster-wrap's base width is the FULL assembled poster (every tile
+     side by side, e.g. 25.5in across for a 3-wide landscape poster) --
+     needed on screen so the CSS Grid arrangement can show the assembled
+     preview. But .poster-wrap is still a flex item of .sign-page
+     (align-items:center), and a physical printed page is a hard-clipped
+     box: centering something several times wider than one page inside it
+     cuts off roughly half of every tile off each side of the sheet. In
+     print, .tile-page elements just need to stack full-bleed at their own
+     single-tile width, so .poster-wrap only needs to be that same single
+     width here -- zoom:1 (already reset) plus this keeps it from ever
+     being wider than the page it's printing onto. */
+  .poster-wrap { zoom: 1 !important; width: calc(var(--tile-w-in) * 1in) !important; }
   .tile-page { margin: 0; border: none; page-break-after: always; break-after: page; }
   .tile-page:last-child { page-break-after: auto; break-after: auto; }
   .tile-label { background: none; border: none; font-size: 10px; }

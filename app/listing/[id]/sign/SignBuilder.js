@@ -36,6 +36,20 @@ function posterGrid(orientation) {
   return orientation === 'landscape' ? { cols: 3, rows: 2 } : { cols: 2, rows: 3 };
 }
 
+// A single chunky arrow shape, reused (at very different sizes) by both
+// the single sheet and the poster -- see the ".sign-arrow svg path" /
+// ".poster-arrow svg path" rules in globals.css for its fill/stroke.
+// Plain SVG rather than the Unicode "➜" glyph so it looks identical
+// across browsers and printers instead of following whatever the local
+// system font happens to draw for that character.
+function ArrowIcon() {
+  return (
+    <svg viewBox="0 0 100 60" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M0,20 H55 V5 L100,30 L55,55 V40 H0 Z" />
+    </svg>
+  );
+}
+
 export default function SignBuilder({ sale, qrSvg }) {
   const [orientation, setOrientation] = useState('landscape');
   const [arrowId, setArrowId] = useState('right');
@@ -50,8 +64,9 @@ export default function SignBuilder({ sale, qrSvg }) {
 
   // For the 3 fixed paper sizes: the actual printed width/height in
   // inches, swapped when Landscape is selected. Fed to both the on-screen
-  // preview (as a unitless aspect ratio) and the print rules (as real
-  // inches) via CSS custom properties -- see .sign-sheet in globals.css.
+  // preview (sized to these true inches, then shrunk with `zoom`) and the
+  // print rules (the same true inches, at full size) via CSS custom
+  // properties -- see .sign-sheet in globals.css.
   const paperDims = useMemo(() => {
     if (isPoster || !paper.w) return null;
     return orientation === 'landscape' ? { w: paper.h, h: paper.w } : { w: paper.w, h: paper.h };
@@ -151,27 +166,42 @@ export default function SignBuilder({ sale, qrSvg }) {
             className="sign-sheet"
             style={{ '--paper-w-in': paperDims.w, '--paper-h-in': paperDims.h }}
           >
-            <div className="sign-logo marker-font">
-              Sale<span>Hop</span>
+            <div className="sign-sheet-inner">
+              <div className="sign-logo marker-font">
+                Sale<span>Hop</span>
+              </div>
+              <p className="sign-tagline">
+                Find It. <span className="dot">•</span> Map It. <span className="dot">•</span> Get It.
+              </p>
+
+              <p className="sign-kicker">Garage Sale</p>
+              <h1 className="sign-title">{sale.title}</h1>
+              <p className="sign-addr">📍 {sale.address}</p>
+              <p className="sign-datetime">
+                {dateRange}
+                <br />
+                {timeRange}
+              </p>
+
+              {arrow.id !== 'none' && (
+                <div className="sign-arrow" style={{ transform: `rotate(${arrow.deg}deg)` }}>
+                  <ArrowIcon />
+                </div>
+              )}
             </div>
 
-            <h1 className="sign-title">{sale.title}</h1>
-            <p className="sign-addr">📍 {sale.address}</p>
-            <p className="sign-datetime">
-              {dateRange}
-              <br />
-              {timeRange}
-            </p>
-
-            {arrow.id !== 'none' && (
-              <div className="sign-arrow" style={{ transform: `rotate(${arrow.deg}deg)` }}>
-                ➜
+            <div className="sign-footer">
+              <div className="sign-qr" dangerouslySetInnerHTML={{ __html: qrSvg }} />
+              <div className="sign-footer-info">
+                <div className="sign-footer-icon">📱</div>
+                <p className="sign-footer-caption">
+                  Scan for photos,
+                  <br />
+                  map &amp; directions
+                </p>
               </div>
-            )}
-
-            <div className="sign-qr" dangerouslySetInnerHTML={{ __html: qrSvg }} />
-            <p className="sign-qr-caption">Scan for photos, full details &amp; directions</p>
-            <p className="sign-brand">salehop.app</p>
+            </div>
+            <p className="sign-brand-pill">salehop.app</p>
           </div>
         </>
       )}
@@ -195,9 +225,13 @@ export default function SignBuilder({ sale, qrSvg }) {
                   <div className="poster-logo marker-font">
                     Sale<span>Hop</span>
                   </div>
+                  <p className="poster-tagline">
+                    Find It. <span className="dot">•</span> Map It. <span className="dot">•</span> Get It.
+                  </p>
+                  <p className="poster-kicker">Garage Sale</p>
                   {arrow.id !== 'none' && (
                     <div className="poster-arrow" style={{ transform: `rotate(${arrow.deg}deg)` }}>
-                      ➜
+                      <ArrowIcon />
                     </div>
                   )}
                   <h1 className="poster-title">{sale.title}</h1>
@@ -207,8 +241,27 @@ export default function SignBuilder({ sale, qrSvg }) {
                     <br />
                     {timeRange}
                   </p>
-                  <div className="poster-qr" dangerouslySetInnerHTML={{ __html: qrSvg }} />
-                  <p className="poster-brand">salehop.app — scan for details</p>
+
+                  {/* Anchored to the canvas's bottom-right corner (not part
+                      of the centered stack above) so the QR always lands
+                      fully inside the single last tile -- see the
+                      .poster-footer-wrap comment in globals.css for why
+                      that matters: a QR split across a taped seam may not
+                      scan. */}
+                  <div className="poster-footer-wrap">
+                    <div className="poster-footer">
+                      <div className="poster-qr" dangerouslySetInnerHTML={{ __html: qrSvg }} />
+                      <div className="poster-footer-info">
+                        <div className="poster-footer-icon">📱</div>
+                        <p className="poster-footer-caption">
+                          Scan for photos,
+                          <br />
+                          map &amp; directions
+                        </p>
+                      </div>
+                    </div>
+                    <p className="poster-brand-pill">salehop.app</p>
+                  </div>
                 </div>
               </div>
             ))}
