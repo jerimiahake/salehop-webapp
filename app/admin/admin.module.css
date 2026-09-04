@@ -4,54 +4,249 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
+  background: #f4f1ea;
 }
 
 .loginCard {
   width: 100%;
-  max-width: 360px;
+  max-width: 380px;
   background: #fff;
   border: 1px solid #e2ddcf;
-  border-radius: 14px;
-  padding: 28px 26px;
-  box-shadow: 0 10px 30px rgba(32, 28, 22, 0.08);
+  border-radius: 16px;
+  padding: 34px 30px 30px;
+  box-shadow: 0 16px 40px rgba(32, 28, 22, 0.1);
+}
+
+.loginBadge {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #f4b93c;
+  color: #201c16;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 18px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 6px rgba(224, 160, 32, 0.35);
 }
 
 .loginCard h1 {
   margin: 0 0 6px;
-  font-size: 20px;
+  font-size: 21px;
   color: #201c16;
+  letter-spacing: -0.3px;
 }
 
+/* ---------- Page shell ---------- */
 .wrap {
-  max-width: 980px;
+  max-width: 1080px;
   margin: 0 auto;
-  padding: 32px 20px 80px;
+  padding: 0 20px 90px;
   font-family: 'DM Sans', system-ui, sans-serif;
   color: #201c16;
-}
-
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 18px;
-}
-
-.header h1 {
-  font-size: 22px;
-  margin: 0;
 }
 
 .hint {
   font-size: 13px;
   color: #5a5346;
   margin: 0 0 16px;
+  line-height: 1.55;
 }
 
 .error {
   font-size: 12.5px;
   color: #d64545;
   margin: 10px 0 0;
+}
+
+/* ---------- Sticky top bar ---------- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: #f4f1ea;
+  margin: 0 -20px;
+  padding: 22px 20px 14px;
+  border-bottom: 1px solid #e2ddcf;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.brandRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brandBadge {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: #f4b93c;
+  color: #201c16;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 15px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(224, 160, 32, 0.35);
+}
+
+.header h1 {
+  font-size: 21px;
+  margin: 0;
+  letter-spacing: -0.3px;
+}
+
+.subtitle {
+  font-size: 12.5px;
+  color: #5a5346;
+  margin: 2px 0 0;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.signOutBtn {
+  background: none;
+  border: none;
+  color: #5a5346;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 9px 6px;
+  font-family: inherit;
+}
+
+.signOutBtn:hover {
+  color: #d64545;
+}
+
+/* Quick-jump nav to each section, with a live count badge so the busiest
+   area is obvious without scrolling first. */
+.navPills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.navPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #fff;
+  border: 1.5px solid #e2ddcf;
+  color: #5a5346;
+  padding: 7px 8px 7px 14px;
+  border-radius: 20px;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.navPill:hover {
+  border-color: #e0a020;
+  color: #201c16;
+}
+
+.navPillCount {
+  background: #eee7d3;
+  color: #201c16;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 12px;
+  min-width: 18px;
+  text-align: center;
+}
+
+.navPillCountAlert {
+  background: #f4b93c;
+}
+
+/* ---------- Stat overview cards ---------- */
+.statsRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin: 20px 0 6px;
+}
+
+.statCard {
+  background: #fff;
+  border: 1px solid #e2ddcf;
+  border-left: 4px solid #d8cdaa;
+  border-radius: 10px;
+  padding: 13px 15px;
+}
+
+.statCardAlert {
+  border-left-color: #e0a020;
+}
+
+.statCardValue {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  line-height: 1.1;
+}
+
+.statCardLabel {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #5a5346;
+  margin-top: 3px;
+}
+
+/* ---------- Section layout ---------- */
+.section {
+  padding-top: 34px;
+  margin-top: 8px;
+  border-top: 1px solid #e2ddcf;
+  scroll-margin-top: 110px;
+}
+
+.section:first-of-type {
+  border-top: none;
+}
+
+.sectionEyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #b98a1f;
+  margin: 0 0 4px;
+}
+
+.sectionHeading {
+  font-size: 18px;
+  margin: 0 0 6px;
+  letter-spacing: -0.3px;
+}
+
+.subHeading {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 22px 0 10px;
+  color: #201c16;
 }
 
 .input,
@@ -79,16 +274,23 @@
   resize: vertical;
 }
 
+/* ---------- Buttons ---------- */
 .button {
   background: #f4b93c;
   color: #201c16;
-  border: none;
+  border: 1.5px solid #f4b93c;
   padding: 10px 16px;
   border-radius: 8px;
   font-weight: 700;
   font-size: 13.5px;
   cursor: pointer;
   font-family: inherit;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.button:hover:not(:disabled) {
+  background: #e0a020;
+  border-color: #e0a020;
 }
 
 .button:disabled {
@@ -97,31 +299,45 @@
 }
 
 .buttonSecondary {
-  background: #eee7d3;
+  background: #fff;
   color: #201c16;
-  border: none;
+  border: 1.5px solid #d8cdaa;
   padding: 10px 16px;
   border-radius: 8px;
   font-weight: 700;
   font-size: 13.5px;
   cursor: pointer;
   font-family: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.buttonSecondary:hover {
+  border-color: #201c16;
+  background: #faf6ec;
 }
 
 .linkButton {
   background: none;
   border: none;
   color: #5a5346;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12.5px;
+  font-weight: 700;
   cursor: pointer;
-  padding: 6px 8px;
+  padding: 7px 9px;
   font-family: inherit;
+}
+
+.linkButton:hover {
+  color: #201c16;
   text-decoration: underline;
 }
 
 .linkButtonDanger {
   composes: linkButton;
+  color: #b23a3a;
+}
+
+.linkButtonDanger:hover {
   color: #d64545;
 }
 
@@ -163,6 +379,11 @@
   font-weight: 700;
   cursor: pointer;
   font-family: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.filterBtn:hover {
+  border-color: #201c16;
 }
 
 .filterBtnActive {
@@ -171,10 +392,15 @@
   color: #f4b93c;
 }
 
+.filterBtnActive:hover {
+  border-color: #201c16;
+}
+
+/* ---------- Row cards ---------- */
 .list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .row {
@@ -187,6 +413,12 @@
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.row:hover {
+  border-color: #d8cdaa;
+  box-shadow: 0 3px 10px rgba(32, 28, 22, 0.05);
 }
 
 .rowMain {
@@ -211,7 +443,7 @@
 .actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex-wrap: wrap;
 }
 
@@ -249,12 +481,6 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: 8px;
-}
-
-.headerActions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
 }
 
 .formCard {
@@ -301,19 +527,9 @@
   overflow: hidden;
   border-radius: 14px;
   border: 1px solid #e2ddcf;
-  margin-bottom: 20px;
+  margin: 20px 0;
   background: var(--paper, #FAF6EC);
-}
-
-.sectionHeading {
-  font-size: 18px;
-  margin: 32px 0 14px;
-}
-
-.subHeading {
-  font-size: 14.5px;
-  margin: 20px 0 10px;
-  color: #5a5346;
+  box-shadow: 0 10px 26px rgba(32, 28, 22, 0.08);
 }
 
 .typeToggle {
@@ -324,7 +540,7 @@
 
 .typeToggleBtn {
   flex: 1;
-  background: #eee7d3;
+  background: #fff;
   color: #5a5346;
   border: 1.5px solid #d8cdaa;
   padding: 9px 10px;
@@ -372,6 +588,13 @@
 
 .tagAddRow .input {
   margin-bottom: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.tagAddRow .button {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .tagList {
@@ -420,7 +643,8 @@
   border: 1px solid #e2ddcf;
   border-radius: 14px;
   padding: 18px;
-  margin-bottom: 18px;
+  margin: 20px 0;
+  box-shadow: 0 10px 26px rgba(32, 28, 22, 0.08);
 }
 
 .importResult {

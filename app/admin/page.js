@@ -469,6 +469,13 @@ export default function AdminPage() {
     return acc;
   }, {});
 
+  // Derived, at-a-glance dashboard numbers -- computed from state that's
+  // already loaded, no extra fetches. Used by the stat cards and the
+  // quick-nav badges just below the header.
+  const activeAdsCount = ads.filter((a) => a.active).length;
+  const openSupportCount =
+    errorReports.filter((r) => !r.resolved).length + contactMessages.filter((m) => !m.resolved).length;
+
   if (!authChecked) {
     return (
       <div className={styles.wrap}>
@@ -481,6 +488,7 @@ export default function AdminPage() {
     return (
       <div className={styles.loginWrap}>
         <form className={styles.loginCard} onSubmit={handleLogin}>
+          <div className={styles.loginBadge}>S</div>
           <h1>SaleHop Admin</h1>
           <p className={styles.hint}>Enter the admin password to manage listings.</p>
           <input
@@ -502,35 +510,89 @@ export default function AdminPage() {
 
   return (
     <div className={styles.wrap}>
-      <header className={styles.header}>
-        <h1>SaleHop Admin</h1>
-        <div className={styles.headerActions}>
-          <button
-            type="button"
-            className={styles.buttonSecondary}
-            onClick={() => setActivePanel(activePanel === 'addListing' ? null : 'addListing')}
-          >
-            {activePanel === 'addListing' ? 'Close' : '+ Add Listing'}
-          </button>
-          <button
-            type="button"
-            className={styles.buttonSecondary}
-            onClick={() => setActivePanel(activePanel === 'addAd' ? null : 'addAd')}
-          >
-            {activePanel === 'addAd' ? 'Close' : '+ Add Ad'}
-          </button>
-          <button
-            type="button"
-            className={styles.buttonSecondary}
-            onClick={() => setActivePanel(activePanel === 'import' ? null : 'import')}
-          >
-            {activePanel === 'import' ? 'Close' : '+ Import Spreadsheet'}
-          </button>
-          <button type="button" className={styles.linkButton} onClick={handleLogout}>
-            Sign Out
-          </button>
+      <div className={styles.topbar}>
+        <header className={styles.header}>
+          <div className={styles.brandRow}>
+            <div className={styles.brandBadge}>S</div>
+            <div>
+              <h1>SaleHop Admin</h1>
+              <p className={styles.subtitle}>Review listings, manage ads, and keep an eye on support.</p>
+            </div>
+          </div>
+          <div className={styles.headerActions}>
+            <button
+              type="button"
+              className={styles.buttonSecondary}
+              onClick={() => setActivePanel(activePanel === 'addListing' ? null : 'addListing')}
+            >
+              {activePanel === 'addListing' ? 'Close' : '+ Add Listing'}
+            </button>
+            <button
+              type="button"
+              className={styles.buttonSecondary}
+              onClick={() => setActivePanel(activePanel === 'addAd' ? null : 'addAd')}
+            >
+              {activePanel === 'addAd' ? 'Close' : '+ Add Ad'}
+            </button>
+            <button
+              type="button"
+              className={styles.buttonSecondary}
+              onClick={() => setActivePanel(activePanel === 'import' ? null : 'import')}
+            >
+              {activePanel === 'import' ? 'Close' : '+ Import Spreadsheet'}
+            </button>
+            <button type="button" className={styles.signOutBtn} onClick={handleLogout}>
+              Sign Out
+            </button>
+          </div>
+        </header>
+
+        <nav className={styles.navPills} aria-label="Jump to section">
+          <a href="#listings" className={styles.navPill}>
+            Listings
+            <span className={`${styles.navPillCount} ${counts.pending > 0 ? styles.navPillCountAlert : ''}`}>
+              {counts.pending}
+            </span>
+          </a>
+          <a href="#ads" className={styles.navPill}>
+            Ads
+            <span className={styles.navPillCount}>{activeAdsCount}</span>
+          </a>
+          <a href="#tags" className={styles.navPill}>
+            Tags
+            <span className={styles.navPillCount}>{tags.length}</span>
+          </a>
+          <a href="#support" className={styles.navPill}>
+            Support
+            <span className={`${styles.navPillCount} ${openSupportCount > 0 ? styles.navPillCountAlert : ''}`}>
+              {openSupportCount}
+            </span>
+          </a>
+        </nav>
+      </div>
+
+      <div className={styles.statsRow}>
+        <div className={`${styles.statCard} ${counts.pending > 0 ? styles.statCardAlert : ''}`}>
+          <div className={styles.statCardValue}>{counts.pending}</div>
+          <div className={styles.statCardLabel}>Pending Review</div>
         </div>
-      </header>
+        <div className={styles.statCard}>
+          <div className={styles.statCardValue}>{counts.approved}</div>
+          <div className={styles.statCardLabel}>Approved</div>
+        </div>
+        <div className={styles.statCard}>
+          <div className={styles.statCardValue}>{counts.rejected}</div>
+          <div className={styles.statCardLabel}>Rejected</div>
+        </div>
+        <div className={styles.statCard}>
+          <div className={styles.statCardValue}>{activeAdsCount}</div>
+          <div className={styles.statCardLabel}>Active Ads</div>
+        </div>
+        <div className={`${styles.statCard} ${openSupportCount > 0 ? styles.statCardAlert : ''}`}>
+          <div className={styles.statCardValue}>{openSupportCount}</div>
+          <div className={styles.statCardLabel}>Open Support</div>
+        </div>
+      </div>
 
       {message && <div className={styles.banner}>{message}</div>}
       {loadError && <div className={styles.bannerError}>{loadError}</div>}
@@ -629,7 +691,12 @@ export default function AdminPage() {
         </div>
       )}
 
-      <div className={styles.filters}>
+      <section id="listings" className={styles.section}>
+        <p className={styles.sectionEyebrow}>Moderation</p>
+        <h2 className={styles.sectionHeading}>Listings</h2>
+        <p className={styles.hint}>Approve, reject, or edit sales as they come in.</p>
+
+        <div className={styles.filters}>
         {STATUS_FILTERS.map((key) => (
           <button
             key={key}
@@ -746,11 +813,14 @@ export default function AdminPage() {
             )}
           </div>
         ))}
-      </div>
+        </div>
+      </section>
 
-      <h2 className={styles.sectionHeading}>Ads</h2>
+      <section id="ads" className={styles.section}>
+        <p className={styles.sectionEyebrow}>Sponsorship</p>
+        <h2 className={styles.sectionHeading}>Ads</h2>
 
-      {adsError && <div className={styles.bannerError}>{adsError}</div>}
+        {adsError && <div className={styles.bannerError}>{adsError}</div>}
       {adsLoading && <p className={styles.hint}>Loading ads…</p>}
       {!adsLoading && ads.length === 0 && (
         <p className={styles.hint}>No ads yet. Use &ldquo;+ Add Ad&rdquo; above to create one.</p>
@@ -865,10 +935,13 @@ export default function AdminPage() {
             )}
           </div>
         ))}
-      </div>
+        </div>
+      </section>
 
-      <h2 className={styles.sectionHeading}>Listing Tags</h2>
-      <p className={styles.hint}>
+      <section id="tags" className={styles.section}>
+        <p className={styles.sectionEyebrow}>Categories</p>
+        <h2 className={styles.sectionHeading}>Listing Tags</h2>
+        <p className={styles.hint}>
         These are the category chips (Tools, Clothing, and so on) sellers can pick from when posting a sale.
         Deleting a tag here only removes it from the picker going forward -- it won&apos;t change any listings
         that already have it.
@@ -905,10 +978,13 @@ export default function AdminPage() {
             </button>
           </span>
         ))}
-      </div>
+        </div>
+      </section>
 
-      <h2 className={styles.sectionHeading}>Support</h2>
-      <p className={styles.hint}>
+      <section id="support" className={styles.section}>
+        <p className={styles.sectionEyebrow}>Help desk</p>
+        <h2 className={styles.sectionHeading}>Support</h2>
+        <p className={styles.hint}>
         Signup and listing-submission failures are logged automatically, so you can see if visitors are running
         into trouble even if they never tell you directly. Contact messages come from the public /contact page --
         each one also tries to email the admin address; if that email fails, the message is still saved here as a
@@ -981,7 +1057,8 @@ export default function AdminPage() {
             </div>
           </div>
         ))}
-      </div>
+        </div>
+      </section>
     </div>
   );
 }
