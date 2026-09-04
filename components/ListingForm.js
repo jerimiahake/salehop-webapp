@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
-import { geocodeAddress, suggestAddress } from '@/lib/geocode';
+import { geocodeAddress, suggestAddress, reverseGeocode } from '@/lib/geocode';
 import { nextNDays } from '@/lib/format';
 import { SITE_URL } from '@/lib/site';
 import ShareToFacebookButton from './ShareToFacebookButton';
@@ -97,6 +97,7 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
     isEdit && initialSale ? initialSale.photo_urls || [] : []
   );
   const [submitting, setSubmitting] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [error, setError] = useState(null);
   const [justCreated, setJustCreated] = useState(null); // { id, title, status, doneMessage } | null
 
@@ -212,6 +213,56 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
     setSuggestOpen(false);
     setSuggestLoading(false);
     setHighlightedIndex(-1);
+  }
+
+  // "Use my current location" -- asks the browser's Geolocation API for
+  // coordinates, then reverse-geocodes those into a street address so the
+  // address field fills in the same way picking a typed suggestion does.
+  // A no-op if the browser can't/won't share a location; the person can
+  // always fall back to typing their address.
+  function useCurrentLocation() {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setError("Your browser doesn't support location lookup — please type your address instead.");
+      return;
+    }
+
+    setError(null);
+    setLocating(true);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (abortRef.current) abortRef.current.abort();
+    setSuggestions([]);
+    setSuggestOpen(false);
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const result = await reverseGeocode(latitude, longitude);
+          if (!result) {
+            setError("We couldn't match that to a street address. Please type your address instead.");
+            return;
+          }
+          setForm((f) => ({
+            ...f,
+            address: result.displayName,
+            location: { lat: result.lat, lng: result.lng, city: result.city || null },
+          }));
+        } catch (err) {
+          setError('Something went wrong looking up your location. Please type your address instead.');
+        } finally {
+          setLocating(false);
+        }
+      },
+      (geoErr) => {
+        setLocating(false);
+        if (geoErr.code === geoErr.PERMISSION_DENIED) {
+          setError('Location access was denied — you can still type your address below.');
+        } else {
+          setError("Couldn't get your location. Please type your address instead.");
+        }
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+    );
   }
 
   function handleAddressKeyDown(e) {
@@ -594,6 +645,9 @@ export default function ListingForm({ mode, session, initialSale, onDone, onCanc
               </ul>
             )}
           </div>
+          <button type="button" className="locate-btn" onClick={useCurrentLocation} disabled={locating}>
+            {locating ? '📍 Finding you…' : '📍 Use my current location'}
+          </button>
           {form.location ? (
             <p className="hint address-verified">✓ Address verified — we&apos;ll drop a pin here exactly.</p>
           ) : (

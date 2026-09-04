@@ -329,6 +329,14 @@ textarea { resize: vertical; min-height: 80px; }
   border-radius: 7px; cursor: pointer; line-height: 1.35;
 }
 .address-suggestion.highlighted, .address-suggestion:hover { background: var(--tan); }
+.locate-btn {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
+  background: none; border: 1.5px dashed var(--line); border-radius: 20px;
+  padding: 7px 13px; font-family: inherit; font-size: 12.5px; font-weight: 600;
+  color: var(--yellow-deep); cursor: pointer;
+}
+.locate-btn:hover { background: var(--tan); border-color: var(--yellow-deep); }
+.locate-btn:disabled { opacity: 0.6; cursor: default; }
 .time-row { display: flex; gap: 10px; align-items: center; }
 .time-row .text-input { flex: 1; }
 .time-row .to { color: var(--ink-soft); font-size: 12.5px; font-weight: 700; }
@@ -480,43 +488,114 @@ textarea { resize: vertical; min-height: 80px; }
    == 96px is the CSS spec's fixed definition, not a guess). @media print
    resets zoom back to 1 so the real inches take over for actual printing. */
 .sign-sheet {
-  background: #fff; border: 3px solid var(--ink); border-radius: 18px; padding: 32px 24px;
+  background: #fff; border: 3px solid var(--ink); border-radius: 18px;
+  padding: calc(var(--paper-w-in) * 1in * 0.022) calc(var(--paper-w-in) * 1in * 0.045);
   width: calc(var(--paper-w-in) * 1in); height: calc(var(--paper-h-in) * 1in);
   zoom: calc(320 / (var(--paper-w-in) * 96));
   text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.3);
   margin: 0 auto; box-sizing: border-box;
   display: flex; flex-direction: column; align-items: center;
+  overflow: hidden;
+  /* --arrow-w is computed in SignBuilder.js (arrowWIn), not here -- it
+     depends on the actual leftover height after every OTHER element's
+     size is accounted for, which is a real budget calculation (see the
+     comment above arrowWIn), not something a single fixed CSS fraction
+     of the page can get right across 6 paper/orientation combinations
+     and 2 very different arrow footprints (compact for Left/Right, a
+     full square for Up/Down). */
 }
-/* Centers the logo/title/address/arrow block vertically within whatever
-   height this paper size ends up being, while the footer below stays
-   pinned to the bottom (flex:1 here soaks up the extra space either way). */
-.sign-sheet-inner { flex: 1; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.sign-logo { font-size: 22px; color: var(--yellow-deep); margin-bottom: 6px; }
-.sign-logo span { color: var(--ink); }
-.sign-tagline { font-size: 11px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; color: var(--ink-soft); margin: 0 0 18px; }
-.sign-tagline .dot { color: var(--yellow-deep); margin: 0 2px; }
-.sign-kicker { font-size: 15px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; color: var(--yellow-deep); margin: 0 0 4px; }
-.sign-title { font-size: 30px; font-weight: 800; margin: 0 0 16px; line-height: 1.15; }
-.sign-addr { font-size: 18px; font-weight: 700; color: var(--ink); margin: 0 0 10px; }
-.sign-datetime { font-size: 16px; color: var(--ink-soft); margin: 0 0 16px; line-height: 1.5; }
-.sign-arrow { width: 76px; height: 46px; margin: 2px 0 4px; }
+/* Distributes the headline/title/arrow/address/time block across
+   whatever height this paper size ends up being, rather than clumping it
+   in the middle -- combined with every size below being set as a
+   fraction of --paper-w-in (not a fixed px value), the design fills most
+   of the sheet no matter which paper size is picked, instead of a fixed
+   amount of content floating in a sea of white on a larger sheet. Sizes
+   are tuned conservatively enough to still fit a realistic WORST-CASE
+   sale address -- real addresses come from raw OpenStreetMap geocoding
+   results (street + neighborhood/township + county + state + zip +
+   country) and commonly run 60-100+ characters, wrapping to 2-3 lines. */
+.sign-sheet-inner { flex: 1; width: 100%; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly; }
+.sign-kicker {
+  font-size: calc(var(--paper-w-in) * 1in * 0.07); font-weight: 900; letter-spacing: 0.01em;
+  text-transform: uppercase; color: var(--ink); margin: 0; line-height: 0.95;
+}
+.sign-title {
+  font-size: calc(var(--paper-w-in) * 1in * 0.03); font-weight: 700; color: var(--ink-soft);
+  margin: calc(var(--paper-w-in) * 1in * 0.008) 0 0; line-height: 1.2;
+}
+.sign-addr {
+  font-size: calc(var(--paper-w-in) * 1in * 0.034); font-weight: 800; color: var(--ink);
+  margin: 0; line-height: 1.2;
+}
+.sign-datetime {
+  font-size: calc(var(--paper-w-in) * 1in * 0.024); color: var(--ink-soft);
+  margin: calc(var(--paper-w-in) * 1in * 0.008) 0 0; line-height: 1.4;
+}
+/* Standalone wordmark, shown only when "No Arrow" is picked -- when an
+   arrow IS shown, the wordmark moves inside it instead (.sign-arrow-logo
+   below) so the arrow can be the dominant element without the logo
+   competing with it for space. */
+.sign-logo-standalone {
+  font-size: calc(var(--paper-w-in) * 1in * 0.05); color: var(--yellow-deep); margin: 0;
+}
+.sign-logo-standalone span { color: var(--ink); }
 .sign-page-notfound { padding: 60px 24px; text-align: center; color: var(--ink-soft); max-width: 420px; }
 
+/* Reserves just enough room for the arrow at whichever direction it's
+   actually pointing -- its own compact height for Left/Right, or a full
+   square (side length --arrow-w) for Up/Down, set inline from
+   SignBuilder.js since that's where the direction is known. Needed
+   because `transform: rotate()` doesn't change an element's layout box,
+   only how it's painted -- an "Up"/"Down" arrow visually swaps to
+   tall-and-narrow while a plain width x height slot would stay
+   wide-and-short, painting over the title/address on either side of it.
+   Reserving the full square ONLY when needed (rather than always) keeps
+   Left/Right -- the common case -- from wasting vertical space it
+   doesn't need. */
+.sign-arrow-slot { width: var(--arrow-w); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 /* Custom chunky arrow shape (a plain SVG path, reused at different sizes
    by the single sheet and the poster) -- crisper and more consistent
    across browsers/printers than the Unicode "➜" glyph, which renders
    with a different weight and shape depending on the system font. */
+.sign-arrow {
+  position: relative;
+  width: var(--arrow-w); height: calc(var(--arrow-w) * 0.6);
+}
 .sign-arrow svg, .poster-arrow svg { display: block; width: 100%; height: 100%; }
 .sign-arrow svg path, .poster-arrow svg path { fill: var(--yellow-deep); stroke: var(--ink); stroke-width: 4; stroke-linejoin: round; }
+/* The arrow's SVG path (see ArrowIcon in SignBuilder.js) has its
+   rectangular "tail" spanning roughly x:0-55%, y:33%-66% of the icon's
+   own box -- this sits the wordmark centered in that tail, and
+   counter-rotates it (see the inline style in SignBuilder.js) so it
+   reads upright no matter which of the 4 directions the arrow points. */
+.sign-arrow-logo {
+  position: absolute; top: 50%; left: 27%;
+  font-size: calc(var(--arrow-w) * 0.1); color: var(--ink);
+  white-space: nowrap; pointer-events: none;
+}
 
-/* Footer: QR + a short "how to use it" caption, pinned below the centered
-   content above as one unit no matter how tall that content ends up. */
-.sign-footer { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; padding-top: 14px; margin-top: 6px; border-top: 2px dashed var(--line); }
-.sign-footer .sign-qr svg { width: 82px; height: 82px; display: block; }
-.sign-footer-info { display: flex; align-items: center; gap: 9px; text-align: left; }
-.sign-footer-icon { width: 38px; height: 38px; border-radius: 50%; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
-.sign-footer-caption { font-size: 12px; color: var(--ink-soft); line-height: 1.35; margin: 0; }
-.sign-brand-pill { display: inline-block; margin-top: 12px; background: var(--ink); color: #fff; font-weight: 700; font-size: 13px; padding: 6px 20px; border-radius: 999px; letter-spacing: 0.3px; }
+/* Footer: QR + a short "how to use it" caption, pinned below the
+   distributed content above as one unit no matter how tall that content
+   ends up -- also scaled off --paper-w-in like everything else above. */
+.sign-footer {
+  display: flex; align-items: center; justify-content: center;
+  gap: calc(var(--paper-w-in) * 1in * 0.015); width: 100%; flex-shrink: 0;
+  padding-top: calc(var(--paper-w-in) * 1in * 0.018); margin-top: calc(var(--paper-w-in) * 1in * 0.007);
+  border-top: 2px dashed var(--line);
+}
+.sign-footer .sign-qr svg { width: calc(var(--paper-w-in) * 1in * 0.085); height: calc(var(--paper-w-in) * 1in * 0.085); display: block; }
+.sign-footer-info { display: flex; align-items: center; gap: calc(var(--paper-w-in) * 1in * 0.012); text-align: left; }
+.sign-footer-icon {
+  width: calc(var(--paper-w-in) * 1in * 0.038); height: calc(var(--paper-w-in) * 1in * 0.038);
+  border-radius: 50%; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center;
+  font-size: calc(var(--paper-w-in) * 1in * 0.018); flex-shrink: 0;
+}
+.sign-footer-caption { font-size: calc(var(--paper-w-in) * 1in * 0.017); color: var(--ink-soft); line-height: 1.3; margin: 0; }
+.sign-brand-pill {
+  display: inline-block; flex-shrink: 0; margin-top: calc(var(--paper-w-in) * 1in * 0.012); background: var(--ink); color: #fff; font-weight: 700;
+  font-size: calc(var(--paper-w-in) * 1in * 0.018); padding: calc(var(--paper-w-in) * 1in * 0.007) calc(var(--paper-w-in) * 1in * 0.022);
+  border-radius: 999px; letter-spacing: 0.3px;
+}
 
 /* "Large Sign" mode: 6 ordinary letter sheets that together form one big
    poster (see posterGrid() in SignBuilder.js). Every measurement here is
