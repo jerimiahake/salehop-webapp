@@ -22,6 +22,7 @@ export default function AppShell() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [ads, setAds] = useState([]);
+  const [adInterval, setAdInterval] = useState(4);
   const dayOptions = useMemo(() => nextNDays(7), []);
   // Multi-select: most sales run 2-3 days, so Browse lets you pick several
   // days at once and see anything running on any of them. Always at least
@@ -200,6 +201,31 @@ export default function AppShell() {
     };
   }, []);
 
+  // Load the ad-frequency setting (how often an ad card is mixed into the
+  // Browse list) -- admin-adjustable via schema-v8's `app_settings` table.
+  // Falls back to the same default of 4 the app always used if this fails,
+  // or if the migration hasn't been run yet, so nothing breaks either way.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return undefined;
+    let cancelled = false;
+
+    supabase
+      .from('app_settings')
+      .select('ad_interval')
+      .eq('id', 1)
+      .single()
+      .then(({ data, error }) => {
+        if (cancelled || error || !data) return;
+        if (Number.isInteger(data.ad_interval) && data.ad_interval > 0) {
+          setAdInterval(data.ad_interval);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Load saved favorites (route stops) from this browser -- no account needed.
   useEffect(() => {
     try {
@@ -281,6 +307,37 @@ export default function AppShell() {
   );
 
   const referenceLocation = userLocation || MAP_CENTER;
+
+  // Order ads closest-first for whoever's browsing, not by whatever order
+  // they happen to come back from Supabase (previously just insertion
+  // order, effectively random from a buyer's perspective). A small random
+  // "jitter" is added to each physical ad's distance before sorting -- a
+  // few miles' worth -- so two/three similarly-close places don't always
+  // show up in the exact same order every time, without letting a
+  // genuinely far-away one jump ahead of a genuinely close one. Ads with
+  // no real location yet (online-only, or a physical ad that hasn't been
+  // geocoded via the /admin edit-and-save step -- see AdCard.js) have no
+  // proximity to sort by, so those are just shuffled and placed after the
+  // location-sorted ones.
+  const JITTER_MILES = 3;
+  const orderedAds = useMemo(() => {
+    if (!ads || ads.length === 0) return ads;
+    const withLocation = [];
+    const withoutLocation = [];
+    ads.forEach((ad) => {
+      const hasLocation = ad.location_type === 'physical' && Number.isFinite(ad.lat) && Number.isFinite(ad.lng);
+      if (hasLocation) {
+        const distance = distanceMiles(referenceLocation, ad) ?? 0;
+        withLocation.push({ ad, sortKey: distance + Math.random() * JITTER_MILES });
+      } else {
+        withoutLocation.push({ ad, sortKey: Math.random() });
+      }
+    });
+    withLocation.sort((a, b) => a.sortKey - b.sortKey);
+    withoutLocation.sort((a, b) => a.sortKey - b.sortKey);
+    return [...withLocation, ...withoutLocation].map((x) => x.ad);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ads, referenceLocation]);
 
   // Toggle a day pill on/off, but never down to zero selected days --
   // Browse always needs at least one day to filter against.
@@ -460,7 +517,8 @@ export default function AppShell() {
         <div className={`screen ${activeScreen === 'browse' ? 'active' : ''}`}>
           <BrowseScreen
             sales={filteredSales}
-            ads={ads}
+            ads={orderedAds}
+            adInterval={adInterval}
             loading={loading}
             loadError={loadError}
             dayOptions={dayOptions}

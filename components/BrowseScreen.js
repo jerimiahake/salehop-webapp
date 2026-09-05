@@ -3,20 +3,24 @@
 import SaleCard from './SaleCard';
 import AdCard from './AdCard';
 
-// How often an ad card appears in the scrolling list -- every 4th real
-// listing. Ads never appear if there are zero matching sales (nothing to
-// interleave between), so a slow day never turns into an ads-only list.
-const AD_INTERVAL = 4;
+// Fallback if the app_settings row hasn't loaded yet (or the schema-v8
+// migration hasn't been run) -- matches the old hardcoded behavior so
+// nothing changes for anyone who hasn't touched the new admin setting.
+const DEFAULT_AD_INTERVAL = 4;
 
-function buildFeed(sales, ads) {
+function buildFeed(sales, ads, adInterval) {
   const feed = sales.map((sale) => ({ type: 'sale', sale }));
   if (!ads || ads.length === 0 || sales.length === 0) return feed;
+
+  // Guard against a bad/unset value (0, negative, not-a-number) rather
+  // than dividing by it or spamming an ad after every single listing.
+  const interval = Number.isInteger(adInterval) && adInterval > 0 ? adInterval : DEFAULT_AD_INTERVAL;
 
   const withAds = [];
   let adIdx = 0;
   feed.forEach((item, i) => {
     withAds.push(item);
-    if ((i + 1) % AD_INTERVAL === 0) {
+    if ((i + 1) % interval === 0) {
       withAds.push({ type: 'ad', ad: ads[adIdx % ads.length], key: `ad-${i}` });
       adIdx += 1;
     }
@@ -27,6 +31,7 @@ function buildFeed(sales, ads) {
 export default function BrowseScreen({
   sales,
   ads,
+  adInterval,
   loading,
   loadError,
   dayOptions,
@@ -40,12 +45,12 @@ export default function BrowseScreen({
 }) {
   let routeIdx = 0;
   // The same physical-location ad can appear more than once in a long
-  // feed (buildFeed cycles through `ads` every AD_INTERVAL items) -- this
+  // feed (buildFeed cycles through `ads` every `adInterval` items) -- this
   // remembers the route number already assigned to a favorited ad the
   // first time it showed up, so a repeat further down the list shows the
   // same number instead of counting itself again.
   const seenAdRouteNum = new Map();
-  const feed = buildFeed(sales, ads);
+  const feed = buildFeed(sales, ads, adInterval);
 
   return (
     <>

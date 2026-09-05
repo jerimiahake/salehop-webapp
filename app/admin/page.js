@@ -52,6 +52,14 @@ export default function AdminPage() {
   const [contactMessagesLoading, setContactMessagesLoading] = useState(false);
   const [contactMessagesError, setContactMessagesError] = useState(null);
 
+  const [adInterval, setAdInterval] = useState(4);
+  const [adIntervalDraft, setAdIntervalDraft] = useState('4');
+  const [adIntervalLoading, setAdIntervalLoading] = useState(false);
+  const [adIntervalSaving, setAdIntervalSaving] = useState(false);
+  const [adIntervalError, setAdIntervalError] = useState(null);
+  const [adIntervalSaved, setAdIntervalSaved] = useState(false);
+  const [settingsMigrationNeeded, setSettingsMigrationNeeded] = useState(false);
+
   useEffect(() => {
     loadSales();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -63,6 +71,7 @@ export default function AdminPage() {
       loadTags();
       loadErrorReports();
       loadContactMessages();
+      loadAdInterval();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed]);
@@ -101,6 +110,54 @@ export default function AdminPage() {
       setAdsError(err.message);
     } finally {
       setAdsLoading(false);
+    }
+  }
+
+  // ---------- Ad frequency setting ----------
+  async function loadAdInterval() {
+    setAdIntervalLoading(true);
+    setAdIntervalError(null);
+    try {
+      const res = await fetch('/api/admin/settings');
+      if (res.status === 401) return;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load settings.');
+      setAdInterval(data.ad_interval);
+      setAdIntervalDraft(String(data.ad_interval));
+      setSettingsMigrationNeeded(Boolean(data.migrationNeeded));
+    } catch (err) {
+      setAdIntervalError(err.message);
+    } finally {
+      setAdIntervalLoading(false);
+    }
+  }
+
+  async function handleSaveAdInterval(e) {
+    e.preventDefault();
+    const value = Number(adIntervalDraft);
+    if (!Number.isInteger(value) || value < 1 || value > 50) {
+      setAdIntervalError('Enter a whole number between 1 and 50.');
+      return;
+    }
+    setAdIntervalSaving(true);
+    setAdIntervalError(null);
+    setAdIntervalSaved(false);
+    try {
+      const res = await fetch('/api/admin/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ad_interval: value }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save.');
+      setAdInterval(data.ad_interval);
+      setAdIntervalDraft(String(data.ad_interval));
+      setAdIntervalSaved(true);
+      setTimeout(() => setAdIntervalSaved(false), 2500);
+    } catch (err) {
+      setAdIntervalError(err.message);
+    } finally {
+      setAdIntervalSaving(false);
     }
   }
 
@@ -819,6 +876,40 @@ export default function AdminPage() {
       <section id="ads" className={styles.section}>
         <p className={styles.sectionEyebrow}>Sponsorship</p>
         <h2 className={styles.sectionHeading}>Ads</h2>
+
+        <form className={styles.formCard} onSubmit={handleSaveAdInterval}>
+          <h3 className={styles.subHeading} style={{ marginTop: 0 }}>
+            Ad frequency
+          </h3>
+          <p className={styles.hint} style={{ marginTop: -4 }}>
+            Show an ad card every this many listings in Browse (1 = an ad after every single
+            listing, higher = ads show up less often). Currently every {adInterval}.
+          </p>
+          {settingsMigrationNeeded && (
+            <p className={styles.hint} style={{ color: '#b98a1f' }}>
+              Using the default of 4 for now -- run{' '}
+              <code>supabase/schema-v8-ad-frequency-setting.sql</code> in the Supabase SQL Editor
+              to make this actually savable.
+            </p>
+          )}
+          <div className={styles.tagAddRow}>
+            <input
+              className={styles.input}
+              type="number"
+              min={1}
+              max={50}
+              step={1}
+              value={adIntervalDraft}
+              onChange={(e) => setAdIntervalDraft(e.target.value)}
+              disabled={adIntervalLoading}
+            />
+            <button type="submit" className={styles.button} disabled={adIntervalSaving || adIntervalLoading}>
+              {adIntervalSaving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+          {adIntervalError && <p className={styles.error}>{adIntervalError}</p>}
+          {adIntervalSaved && <p className={styles.hint} style={{ color: '#2f7a4f' }}>✅ Saved.</p>}
+        </form>
 
         {adsError && <div className={styles.bannerError}>{adsError}</div>}
       {adsLoading && <p className={styles.hint}>Loading ads…</p>}
