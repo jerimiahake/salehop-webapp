@@ -31,6 +31,7 @@ export default function AccountScreen({
   onDeleteSale,
   onFeatureSale,
   featuringId,
+  onShowWelcome,
 }) {
   const [email, setEmail] = useState('');
   const [sending, setSending] = useState(false);
@@ -294,6 +295,15 @@ export default function AccountScreen({
             <div className="logo marker-font" style={{ fontSize: 17 }}>
               Your <span>Account</span>
             </div>
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={() => onShowWelcome?.()}
+              aria-label="What is SaleHop?"
+              title="What is SaleHop?"
+            >
+              ❓
+            </button>
           </div>
         </div>
 
@@ -492,6 +502,15 @@ export default function AccountScreen({
           <div className="logo marker-font" style={{ fontSize: 17 }}>
             Your <span>Account</span>
           </div>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => onShowWelcome?.()}
+            aria-label="What is SaleHop?"
+            title="What is SaleHop?"
+          >
+            ❓
+          </button>
         </div>
       </div>
 

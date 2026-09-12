@@ -759,3 +759,42 @@ textarea { resize: vertical; min-height: 80px; }
   width: 100%; background: none; border: none; padding: 12px; margin-top: 2px;
   font-weight: 700; font-size: 13.5px; color: var(--ink-soft); cursor: pointer; font-family: inherit;
 }
+
+/* One-time first-visit welcome carousel (WelcomeOverlay.js) -- same
+   absolute-inset-inside-.device pattern as .manage-menu-backdrop above,
+   just centered instead of bottom-anchored, and above it in the stack
+   (z-index 1300 vs 1200) since it's meant to be the very first thing a
+   new visitor sees, before anything else could be open underneath it. */
+.welcome-overlay-backdrop {
+  position: absolute; inset: 0; background: rgba(32,28,22,0.6);
+  z-index: 1300; display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.welcome-overlay-card {
+  position: relative; width: 100%; max-width: 340px;
+  background: var(--paper); border-radius: 20px; padding: 28px 22px 22px;
+  box-shadow: 0 16px 40px rgba(32,28,22,0.35);
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  border-top: 6px solid var(--yellow);
+}
+.welcome-overlay-skip {
+  position: absolute; top: 14px; right: 16px; background: none; border: none;
+  font-weight: 700; font-size: 12.5px; color: var(--ink-soft); cursor: pointer; font-family: inherit;
+}
+.welcome-overlay-brand {
+  font-family: 'Permanent Marker', cursive; font-size: 22px; color: var(--ink);
+  transform: rotate(-2deg); margin-top: 4px;
+}
+.welcome-overlay-brand span { color: var(--yellow-deep); }
+.welcome-overlay-tagline { font-size: 11px; color: var(--ink-soft); letter-spacing: 0.4px; margin: 2px 0 18px; }
+.welcome-overlay-emoji { font-size: 42px; margin-bottom: 10px; }
+.welcome-overlay-title { font-size: 17px; margin: 0 0 8px; color: var(--ink); }
+.welcome-overlay-body { font-size: 13px; color: var(--ink-soft); line-height: 1.55; margin: 0 0 20px; }
+.welcome-overlay-dots { display: flex; gap: 6px; margin-bottom: 18px; }
+.welcome-overlay-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+.welcome-overlay-dot.active { background: var(--yellow-deep); width: 18px; border-radius: 4px; }
+.welcome-overlay-next {
+  width: 100%; background: var(--yellow); color: var(--ink); border: none;
+  border-radius: 12px; padding: 13px; font-weight: 700; font-size: 14px;
+  cursor: pointer; font-family: inherit;
+}

@@ -13,8 +13,10 @@ import AccountScreen from './AccountScreen';
 import BottomNav from './BottomNav';
 import Toast from './Toast';
 import ShareToFacebookButton from './ShareToFacebookButton';
+import WelcomeOverlay from './WelcomeOverlay';
 
 const FAVORITES_KEY = 'salehop:favorites';
+const ONBOARDING_KEY = 'salehop:onboardingSeen';
 
 export default function AppShell() {
   const [activeScreen, setActiveScreen] = useState('browse');
@@ -40,6 +42,14 @@ export default function AppShell() {
   // Account's "set a new password" form instead of the normal signed-in
   // view, even though that click also gave them a valid session.
   const [passwordRecovery, setPasswordRecovery] = useState(false);
+
+  // First-visit welcome carousel (WelcomeOverlay.js) -- shown once ever per
+  // browser, then never again on its own (see ONBOARDING_KEY above).
+  // Reachable again anytime via the "❓ What is SaleHop?" link on the
+  // Account screen, which calls handleShowWelcome below without touching
+  // localStorage -- only dismissing it (Skip or finishing the carousel)
+  // writes the "don't auto-show again" flag.
+  const [showWelcome, setShowWelcome] = useState(false);
 
   // A seller's own listings (every status, not just approved -- unlike
   // `sales` above) plus the shared edit/feature/delete state for them.
@@ -235,6 +245,33 @@ export default function AppShell() {
       // ignore malformed/blocked storage
     }
   }, []);
+
+  // Show the first-visit welcome carousel unless this browser has already
+  // dismissed it (or storage is blocked/unavailable -- in that case it just
+  // won't auto-show, same fail-safe-quiet approach as favorites above).
+  useEffect(() => {
+    try {
+      if (!window.localStorage.getItem(ONBOARDING_KEY)) {
+        setShowWelcome(true);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const handleDismissWelcome = useCallback(() => {
+    setShowWelcome(false);
+    try {
+      window.localStorage.setItem(ONBOARDING_KEY, '1');
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Reopen on demand (Account screen's "❓ What is SaleHop?" link) --
+  // doesn't touch localStorage, so dismissing it again afterward doesn't
+  // change anything about the automatic first-visit behavior.
+  const handleShowWelcome = useCallback(() => setShowWelcome(true), []);
 
   // Stripe redirects back here (full page reload) after a "Feature this
   // listing" checkout finishes -- success_url/cancel_url in
@@ -581,6 +618,7 @@ export default function AppShell() {
             onDeleteSale={handleDeleteSale}
             onFeatureSale={handleFeatureSale}
             featuringId={featuringId}
+            onShowWelcome={handleShowWelcome}
           />
         </div>
       </div>
@@ -651,6 +689,8 @@ export default function AppShell() {
           </div>
         </div>
       )}
+
+      {showWelcome && <WelcomeOverlay onDismiss={handleDismissWelcome} />}
     </div>
   );
 }
