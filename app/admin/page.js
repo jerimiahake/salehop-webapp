@@ -72,6 +72,12 @@ export default function AdminPage() {
   const [spotSettingsSaved, setSpotSettingsSaved] = useState(false);
   const [spottedSettingsMigrationNeeded, setSpottedSettingsMigrationNeeded] = useState(false);
 
+  // ---------- Players / leads (schema-v13-badges.sql) ----------
+  const [players, setPlayers] = useState([]);
+  const [playersLoading, setPlayersLoading] = useState(false);
+  const [playersError, setPlayersError] = useState(null);
+  const [playersMigrationNeeded, setPlayersMigrationNeeded] = useState(false);
+
   useEffect(() => {
     loadSales();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -85,6 +91,7 @@ export default function AdminPage() {
       loadContactMessages();
       loadAdInterval();
       loadSpottedSales();
+      loadPlayers();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed]);
@@ -261,6 +268,49 @@ export default function AdminPage() {
     } catch (err) {
       setMessage(`Couldn't remove that note: ${err.message}`);
     }
+  }
+
+  // ---------- Players / leads ----------
+  async function loadPlayers() {
+    setPlayersLoading(true);
+    setPlayersError(null);
+    try {
+      const res = await fetch('/api/admin/players');
+      if (res.status === 401) return;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load players.');
+      setPlayers(data.players || []);
+      setPlayersMigrationNeeded(Boolean(data.migrationNeeded));
+    } catch (err) {
+      setPlayersError(err.message);
+    } finally {
+      setPlayersLoading(false);
+    }
+  }
+
+  // Builds the CSV entirely client-side from data already loaded -- no new
+  // endpoint needed. Quotes every field and doubles any embedded quotes so
+  // a comma or quote in a name/email doesn't corrupt the column layout.
+  function handleExportPlayersCsv() {
+    const header = ['Email', 'Phone', 'Username', 'Badges', 'Marketing OK', 'Joined'];
+    const csvField = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const lines = [header.map(csvField).join(',')];
+    players.forEach((p) => {
+      lines.push(
+        [p.email, p.phone, p.username, p.badgeCount, p.marketingOptIn ? 'Yes' : 'No', new Date(p.createdAt).toLocaleString()]
+          .map(csvField)
+          .join(',')
+      );
+    });
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `salehop-leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   }
 
   async function handleSaveAdInterval(e) {
@@ -487,6 +537,7 @@ export default function AdminPage() {
     setAds([]);
     setTags([]);
     setSpottedSales([]);
+    setPlayers([]);
   }
 
   async function updateSale(id, updates) {
@@ -649,6 +700,7 @@ export default function AdminPage() {
       location_type: ad.location_type || 'online',
       address: ad.address || '',
       owner_email: ad.owner_email || '',
+      link_only: ad.link_only || false,
     });
   }
 
@@ -708,6 +760,7 @@ export default function AdminPage() {
     errorReports.filter((r) => !r.resolved).length + contactMessages.filter((m) => !m.resolved).length;
   const featuredCompCount = sales.filter((s) => s.featured_comp).length;
   const unconfirmedSpottedCount = spottedSales.filter((s) => s.status === 'unconfirmed').length;
+  const leadsCapturedCount = players.filter((p) => p.email || p.phone).length;
 
   if (!authChecked) {
     return (
@@ -807,6 +860,10 @@ export default function AdminPage() {
               {unconfirmedSpottedCount}
             </span>
           </a>
+          <a href="#players" className={styles.navPill}>
+            Players
+            <span className={styles.navPillCount}>{leadsCapturedCount}</span>
+          </a>
         </nav>
       </div>
 
@@ -834,6 +891,10 @@ export default function AdminPage() {
         <div className={styles.statCard}>
           <div className={styles.statCardValue}>{featuredCompCount}</div>
           <div className={styles.statCardLabel}>Free Comps Given</div>
+        </div>
+        <div className={styles.statCard}>
+          <div className={styles.statCardValue}>{leadsCapturedCount}</div>
+          <div className={styles.statCardLabel}>Leads Captured</div>
         </div>
       </div>
 
@@ -1178,6 +1239,14 @@ export default function AdminPage() {
                       onChange={(e) => setEditAdDraft((d) => ({ ...d, sponsor_name: e.target.value }))}
                       placeholder="Sponsor name"
                     />
+                    <label className={styles.checkboxRow}>
+                      <input
+                        type="checkbox"
+                        checked={editAdDraft.link_only}
+                        onChange={(e) => setEditAdDraft((d) => ({ ...d, link_only: e.target.checked }))}
+                      />
+                      Link only -- skip the ad&apos;s page, open the link URL directly
+                    </label>
                   </>
                 )}
                 <input
@@ -1213,6 +1282,9 @@ export default function AdminPage() {
                     </p>
                     {ad.location_type === 'physical' && (
                       <p className={styles.rowSub}>📍 {ad.address}{!Number.isFinite(ad.lat) ? ' (not located on the map)' : ''}</p>
+                    )}
+                    {ad.ad_type !== 'snippet' && ad.link_only && (
+                      <p className={styles.rowSub}>🔗 Link only -- opens {ad.link_url} directly</p>
                     )}
                     {ad.owner_email && (
                       <p className={styles.rowSub}>
@@ -1531,6 +1603,64 @@ export default function AdminPage() {
                 <button type="button" className={styles.linkButtonDanger} onClick={() => handleDeleteSpotted(spot)}>
                   Delete
                 </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section id="players" className={styles.section}>
+        <p className={styles.sectionEyebrow}>Badges &amp; rewards</p>
+        <h2 className={styles.sectionHeading}>Players</h2>
+        <p className={styles.hint}>
+          Everyone who&apos;s earned at least one badge shows up here as soon as they hit that first
+          milestone (see the badge popup) -- this is the actual payoff of the whole badges feature:
+          an email or phone number, captured a little at a time as someone uses the app, with no
+          account required. Nothing here is ever shown publicly -- the leaderboard visitors see only
+          shows usernames.
+        </p>
+
+        {playersMigrationNeeded && (
+          <p className={styles.hint} style={{ color: '#b98a1f' }}>
+            Run <code>supabase/schema-v13-badges.sql</code> in the Supabase SQL Editor to turn on
+            badges and start capturing leads here.
+          </p>
+        )}
+
+        {playersError && <div className={styles.bannerError}>{playersError}</div>}
+        {playersLoading && <p className={styles.hint}>Loading…</p>}
+        {!playersLoading && players.length === 0 && !playersMigrationNeeded && (
+          <p className={styles.hint}>No one&apos;s earned a badge yet.</p>
+        )}
+
+        {players.length > 0 && (
+          <div className={styles.tagAddRow} style={{ marginBottom: 12 }}>
+            <button type="button" className={styles.buttonSecondary} onClick={handleExportPlayersCsv}>
+              ⬇ Export CSV
+            </button>
+            <button type="button" className={styles.linkButton} onClick={loadPlayers} style={{ marginLeft: 'auto' }}>
+              {playersLoading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
+        )}
+
+        <div className={styles.list}>
+          {players.map((p) => (
+            <div className={styles.row} key={`${p.email || ''}:${p.phone || ''}:${p.createdAt}`}>
+              <div className={styles.rowMain}>
+                <span className={`${styles.badge} ${p.email || p.phone ? styles.badge_approved : styles.badge_pending}`}>
+                  {p.badgeCount} badge{p.badgeCount === 1 ? '' : 's'}
+                </span>
+                <div>
+                  <p className={styles.rowTitle}>{p.username || '(no username)'}</p>
+                  <p className={styles.rowSub}>
+                    {p.email || '—'} {p.phone ? `· ${p.phone}` : ''}
+                  </p>
+                  <p className={styles.rowSub}>
+                    Joined {new Date(p.createdAt).toLocaleDateString()}
+                    {p.marketingOptIn ? ' · ✅ OK to contact about sales/badges' : ''}
+                  </p>
+                </div>
               </div>
             </div>
           ))}

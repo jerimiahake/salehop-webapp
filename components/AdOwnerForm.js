@@ -21,6 +21,7 @@ export default function AdOwnerForm({ ad, onDone, onCancel }) {
   const [sponsorName, setSponsorName] = useState(ad.sponsor_name || '');
   const [locationType, setLocationType] = useState(ad.location_type || 'online');
   const [address, setAddress] = useState(ad.address || '');
+  const [linkOnly, setLinkOnly] = useState(ad.link_only || false);
   const [image, setImage] = useState(null); // { file, previewUrl } -- only set if replacing the image
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -105,6 +106,7 @@ export default function AdOwnerForm({ ad, onDone, onCancel }) {
         updates.link_url = normalizedLink;
         updates.sponsor_name = sponsorName.trim() || null;
         updates.image_url = imageUrl;
+        updates.link_only = linkOnly;
       }
 
       const { error: updateError } = await supabase.from('ads').update(updates).eq('id', ad.id);
@@ -149,7 +151,7 @@ export default function AdOwnerForm({ ad, onDone, onCancel }) {
           rows={3}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Optional -- shown on your ad's shareable page."
+          placeholder="Optional -- shown on your ad&apos;s shareable page."
         />
       </div>
 
@@ -168,6 +170,22 @@ export default function AdOwnerForm({ ad, onDone, onCancel }) {
               onChange={(e) => setSponsorName(e.target.value)}
               placeholder="Optional"
             />
+          </div>
+
+          <div className="field-group">
+            <label className="neighborhood-toggle">
+              <input
+                type="checkbox"
+                checked={linkOnly}
+                onChange={(e) => setLinkOnly(e.target.checked)}
+              />
+              <span>🔗 Skip my ad&apos;s page -- open my link directly when tapped</span>
+            </label>
+            <p className="hint" style={{ marginTop: 6 }}>
+              Leave unchecked (recommended) so tapping your ad opens its own page in SaleHop first --
+              your image, description, a &ldquo;Visit Website&rdquo; button, and check-ins if you&apos;re
+              a physical location.
+            </p>
           </div>
 
           <div className="field-group">

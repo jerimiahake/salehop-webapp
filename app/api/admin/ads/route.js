@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isAdminRequest } from '@/lib/adminAuth';
 import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabaseAdmin';
+import { withMissingColumnRetry } from '@/lib/dbCompat';
 
 // Lists every ad (active and inactive) for the /admin dashboard. Public
 // visitors only ever see active ones (enforced by RLS on the "ads" table),
@@ -80,20 +81,21 @@ export async function POST(request) {
     // password accounts) and edit it themselves. Leave blank to keep an
     // ad 100% admin-only, same as before this existed.
     owner_email: body.owner_email ? String(body.owner_email).trim() || null : null,
+    // Whether tapping this ad jumps straight to link_url (true) or opens
+    // its own in-app page first (false, the default) -- see supabase/
+    // schema-v15-ad-link-destination.sql. Only meaningful for image ads.
+    link_only: adType === 'image' ? Boolean(body.link_only) : false,
     active: true,
   };
 
-  let { data, error } = await supabaseAdmin.from('ads').insert(newAd).select().single();
-
-  // 42703 = Postgres "undefined column" -- schema-v12-ad-ownership.sql
-  // (which adds owner_email) hasn't been run yet. Rather than failing
-  // every single ad creation until that migration is run, silently drop
-  // just that one field and retry once, same graceful-degradation pattern
-  // used elsewhere in this app for not-yet-migrated columns.
-  if (error?.code === '42703') {
-    const { owner_email, ...withoutOwnerEmail } = newAd;
-    ({ data, error } = await supabaseAdmin.from('ads').insert(withoutOwnerEmail).select().single());
-  }
+  // Either owner_email (schema-v12) or link_only (schema-v15) -- or both,
+  // or neither -- may not exist yet on a given deployment, depending on
+  // which migrations have been run. withMissingColumnRetry drops whichever
+  // column Postgres actually complains about and retries, rather than
+  // hardcoding a single column to strip.
+  const { data, error } = await withMissingColumnRetry(newAd, (payload) =>
+    supabaseAdmin.from('ads').insert(payload).select().single()
+  );
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

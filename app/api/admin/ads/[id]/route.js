@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isAdminRequest } from '@/lib/adminAuth';
 import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabaseAdmin';
+import { withMissingColumnRetry } from '@/lib/dbCompat';
 
 const EDITABLE_FIELDS = [
   'title',
@@ -20,6 +21,11 @@ const EDITABLE_FIELDS = [
   // the RLS trigger that blocks an owner from changing their own
   // owner_email), never by the advertiser's own edit form.
   'owner_email',
+  // Click destination -- see supabase/schema-v15-ad-link-destination.sql.
+  // Also settable from AdOwnerForm.js directly through Supabase (it isn't
+  // one of the trigger-protected fields), but the admin panel's own inline
+  // edit form goes through this route like everything else it edits.
+  'link_only',
 ];
 
 export async function PATCH(request, { params }) {
@@ -45,18 +51,14 @@ export async function PATCH(request, { params }) {
     return NextResponse.json({ error: 'Nothing to update.' }, { status: 400 });
   }
 
-  let { data, error } = await supabaseAdmin.from('ads').update(updates).eq('id', params.id).select().single();
-
-  // 42703 = Postgres "undefined column" -- schema-v12-ad-ownership.sql
-  // (which adds owner_email) hasn't been run yet. Rather than failing
-  // this save entirely (even when owner_email wasn't the field someone
-  // actually meant to change -- the admin panel's inline edit form always
-  // includes it), silently drop just that one field and retry once, same
-  // graceful-degradation pattern used elsewhere in this app.
-  if (error?.code === '42703' && 'owner_email' in updates) {
-    const { owner_email, ...withoutOwnerEmail } = updates;
-    ({ data, error } = await supabaseAdmin.from('ads').update(withoutOwnerEmail).eq('id', params.id).select().single());
-  }
+  // Either owner_email (schema-v12) or link_only (schema-v15) -- or both,
+  // or neither -- may not exist yet on a given deployment. Rather than
+  // failing this save entirely over a field nobody meant to change (the
+  // admin panel's inline edit form always sends both), drop whichever
+  // column Postgres actually complains about and retry.
+  const { data, error } = await withMissingColumnRetry(updates, (payload) =>
+    supabaseAdmin.from('ads').update(payload).eq('id', params.id).select().single()
+  );
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

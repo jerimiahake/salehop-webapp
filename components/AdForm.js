@@ -34,6 +34,7 @@ export default function AdForm({ styles, onCreated, onCancel }) {
   const [image, setImage] = useState(null); // { file, previewUrl }
   const [htmlSnippet, setHtmlSnippet] = useState('');
   const [ownerEmail, setOwnerEmail] = useState('');
+  const [linkOnly, setLinkOnly] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -116,6 +117,7 @@ export default function AdForm({ styles, onCreated, onCancel }) {
           lat,
           lng,
           owner_email: ownerEmail.trim() || null,
+          link_only: adType === 'image' ? linkOnly : false,
         }),
       });
       const data = await res.json();
@@ -208,6 +210,15 @@ export default function AdForm({ styles, onCreated, onCancel }) {
             value={sponsorName}
             onChange={(e) => setSponsorName(e.target.value)}
           />
+          <label className={styles.checkboxRow}>
+            <input type="checkbox" checked={linkOnly} onChange={(e) => setLinkOnly(e.target.checked)} />
+            Link only -- skip the ad&apos;s own page, open the link URL directly
+          </label>
+          <p className={styles.hint} style={{ marginTop: -4 }}>
+            Leave unchecked (recommended) so tapping this ad opens its own page in SaleHop first --
+            image, description, a &ldquo;Visit Website&rdquo; button, and (for a physical location)
+            check-ins. Check this only if the sponsor wants a tap to jump straight to their site.
+          </p>
           <label className={styles.imagePicker}>
             {image ? (
               // eslint-disable-next-line @next/next/no-img-element

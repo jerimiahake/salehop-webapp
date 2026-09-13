@@ -78,6 +78,9 @@ export default function BrowseScreen({
         <div className="search">
           🔍{' '}
           <input
+            type="search"
+            name="salehop-browse-search"
+            autoComplete="off"
             placeholder="Search neighborhood or address…"
             value={searchQuery}
             onChange={(e) => onSearch(e.target.value)}
