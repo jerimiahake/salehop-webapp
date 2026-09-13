@@ -228,7 +228,11 @@ export default function AppShell() {
 
   // Load active ads (sponsored cards mixed into Browse). Not critical if
   // this fails or Supabase isn't configured yet -- the app just shows no
-  // ads rather than breaking anything.
+  // ads rather than breaking anything. `adsLoaded` (only ever set true on
+  // a successful load, see the stale-favorites cleanup effect below) lets
+  // that effect know it's safe to treat "not found in `ads`" as "this
+  // favorited ad is really gone," rather than "ads just haven't loaded yet."
+  const [adsLoaded, setAdsLoaded] = useState(false);
   useEffect(() => {
     if (!isSupabaseConfigured) return undefined;
     let cancelled = false;
@@ -240,6 +244,7 @@ export default function AppShell() {
       .then(({ data, error }) => {
         if (cancelled || error) return;
         setAds(data || []);
+        setAdsLoaded(true);
       });
 
     return () => {
@@ -433,6 +438,46 @@ export default function AppShell() {
       // ignore
     }
   }, []);
+
+  // A favorited sale can go stale two different ways, and both used to
+  // leave a permanent "phantom" entry in `favorites` (the raw id list
+  // persisted to localStorage) with no in-app way to ever un-star it
+  // again, since there's nothing left to tap the star on: (1) it gets
+  // deleted or un-approved entirely (a seller removes it, or /admin
+  // rejects it after the fact), or (2) -- reported directly by Jerimiah,
+  // and the more common case day-to-day -- its sale_date/end_date simply
+  // passes, since sales are never auto-deleted (they just fall out of
+  // Browse's day-pill filter on their own, see build_status's "no
+  // automatic listing expiry" note) so an old approved sale sticks around
+  // in the database, and used to stick around in Your Route, forever.
+  // Either way, the Saved nav badge (`favorites.length`) kept counting it
+  // forever while Your Route (`favoritedSales` above) showed fewer real
+  // stops than that badge claimed -- all the way down to a confusingly
+  // empty screen if every favorite had gone stale. Once both sales and ads
+  // have loaded for real (not just their empty initial state), this
+  // quietly drops any favorited sale whose last day has passed, or any
+  // favorited id that no longer matches a sale OR an ad at all -- a
+  // physical-location ad (a store, not a one-time event) never expires by
+  // date, so those are only ever dropped for reason (1).
+  useEffect(() => {
+    if (loading || !adsLoaded || favorites.length === 0) return;
+    const todayKey = toDateKey(new Date());
+    const adIds = new Set(ads.map((a) => a.id));
+    const salesById = new Map(sales.map((s) => [s.id, s]));
+    const pruned = favorites.filter((id) => {
+      if (adIds.has(id)) return true;
+      const sale = salesById.get(id);
+      if (!sale) return false;
+      return (sale.end_date || sale.sale_date) >= todayKey;
+    });
+    // Only ever persists when something actually got dropped, so once
+    // `favorites` reflects the pruned list this converges immediately
+    // instead of looping -- safe to depend on `favorites` here even
+    // though this effect is also what changes it.
+    if (pruned.length !== favorites.length) {
+      persistFavorites(pruned);
+    }
+  }, [loading, adsLoaded, sales, ads, favorites, persistFavorites]);
 
   const toggleFavorite = useCallback(
     (id) => {

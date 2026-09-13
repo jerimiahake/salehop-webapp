@@ -175,7 +175,16 @@ body.sign-mode {
 
 .thumb { width: 52px; height: 52px; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; overflow: hidden; }
 .thumb img { width: 100%; height: 100%; object-fit: cover; }
-.card-body { flex: 1; min-width: 0; }
+/* The 30px favorite star (.fav-btn below) is absolutely positioned in
+   the card's top-right corner rather than sitting in normal flex flow,
+   so it doesn't reserve any space of its own -- without this padding, a
+   long enough title (or a tag/badge row with many short chips) wraps
+   right underneath it and gets visually covered, since text has no way
+   to know to avoid an absolutely-positioned sibling. This reserves a
+   permanent gutter the width of the button + a little breathing room, so
+   nothing in the card body can ever wrap under it, no matter how long
+   the title or how many tags a card has. */
+.card-body { flex: 1; min-width: 0; padding-right: 38px; }
 .card-title { font-weight: 700; font-size: 14.5px; margin: 0 0 3px; }
 .card-addr { font-size: 12px; color: var(--ink-soft); margin: 0 0 6px; }
 .card-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
