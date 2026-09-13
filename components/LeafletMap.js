@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
 function makePinIcon({ favorited, selected, routeNum, isAd }) {
@@ -11,6 +11,25 @@ function makePinIcon({ favorited, selected, routeNum, isAd }) {
     html: `
       <div class="sale-pin ${favorited ? 'favorited' : ''} ${selected ? 'selected' : ''} ${isAd ? 'ad-stop' : ''}">
         <div class="sign">${label}</div>
+        <div class="stick"></div>
+      </div>
+    `,
+    iconSize: [34, 40],
+    iconAnchor: [17, 38],
+  });
+}
+
+// Crowdsourced "spotted a sale" pins (see components/AppShell.js) -- a
+// passerby-reported sighting, not a real listing, so these get their own
+// distinct dashed-vs-solid look (styled in globals.css) rather than
+// reusing the plain yellow sale pin.
+function makeSpottedPinIcon(status) {
+  const confirmed = status === 'confirmed';
+  return L.divIcon({
+    className: 'sale-pin-wrapper',
+    html: `
+      <div class="sale-pin spotted-sale ${confirmed ? 'spotted-confirmed' : 'spotted-unconfirmed'}">
+        <div class="sign">🚩</div>
         <div class="stick"></div>
       </div>
     `,
@@ -51,6 +70,7 @@ function InvalidateOnShow({ active }) {
 export default function LeafletMap({
   sales,
   ads = [],
+  spottedSales = [],
   favorites,
   selectedSaleId,
   onSelectSale,
@@ -141,6 +161,18 @@ export default function LeafletMap({
           })}
         />
       ))}
+
+      {spottedSales
+        .filter((spot) => Number.isFinite(spot.lat) && Number.isFinite(spot.lng))
+        .map((spot) => (
+          <Marker key={`spot-${spot.id}`} position={[spot.lat, spot.lng]} icon={makeSpottedPinIcon(spot.status)}>
+            <Popup>
+              {spot.status === 'confirmed'
+                ? '🚩 Reported sale -- confirmed by the community. Just a spotted location, not a full listing yet.'
+                : "🚩 Unconfirmed -- someone reported a sale near here. Not yet verified -- worth a look if you're nearby!"}
+            </Popup>
+          </Marker>
+        ))}
     </MapContainer>
   );
 }

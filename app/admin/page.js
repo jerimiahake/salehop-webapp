@@ -60,6 +60,18 @@ export default function AdminPage() {
   const [adIntervalSaved, setAdIntervalSaved] = useState(false);
   const [settingsMigrationNeeded, setSettingsMigrationNeeded] = useState(false);
 
+  // ---------- Crowdsourced "spotted a sale" reports (schema-v10) ----------
+  const [spottedSales, setSpottedSales] = useState([]);
+  const [spottedSalesLoading, setSpottedSalesLoading] = useState(false);
+  const [spottedSalesError, setSpottedSalesError] = useState(null);
+
+  const [spotRadiusDraft, setSpotRadiusDraft] = useState('300');
+  const [spotConfirmCountDraft, setSpotConfirmCountDraft] = useState('3');
+  const [spotSettingsSaving, setSpotSettingsSaving] = useState(false);
+  const [spotSettingsError, setSpotSettingsError] = useState(null);
+  const [spotSettingsSaved, setSpotSettingsSaved] = useState(false);
+  const [spottedSettingsMigrationNeeded, setSpottedSettingsMigrationNeeded] = useState(false);
+
   useEffect(() => {
     loadSales();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -72,6 +84,7 @@ export default function AdminPage() {
       loadErrorReports();
       loadContactMessages();
       loadAdInterval();
+      loadSpottedSales();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed]);
@@ -113,7 +126,7 @@ export default function AdminPage() {
     }
   }
 
-  // ---------- Ad frequency setting ----------
+  // ---------- Ad frequency + spotted-sale settings (one shared row) ----------
   async function loadAdInterval() {
     setAdIntervalLoading(true);
     setAdIntervalError(null);
@@ -125,10 +138,92 @@ export default function AdminPage() {
       setAdInterval(data.ad_interval);
       setAdIntervalDraft(String(data.ad_interval));
       setSettingsMigrationNeeded(Boolean(data.migrationNeeded));
+      setSpotRadiusDraft(String(data.spotted_sale_radius_ft ?? 300));
+      setSpotConfirmCountDraft(String(data.spotted_sale_confirm_count ?? 3));
+      setSpottedSettingsMigrationNeeded(Boolean(data.spottedSettingsMigrationNeeded));
     } catch (err) {
       setAdIntervalError(err.message);
     } finally {
       setAdIntervalLoading(false);
+    }
+  }
+
+  async function handleSaveSpotSettings(e) {
+    e.preventDefault();
+    const radiusFt = Number(spotRadiusDraft);
+    const confirmCount = Number(spotConfirmCountDraft);
+    if (!Number.isInteger(radiusFt) || radiusFt < 50 || radiusFt > 2000) {
+      setSpotSettingsError('Enter a whole number of feet between 50 and 2000.');
+      return;
+    }
+    if (!Number.isInteger(confirmCount) || confirmCount < 2 || confirmCount > 10) {
+      setSpotSettingsError('Enter a whole number between 2 and 10.');
+      return;
+    }
+    setSpotSettingsSaving(true);
+    setSpotSettingsError(null);
+    setSpotSettingsSaved(false);
+    try {
+      const res = await fetch('/api/admin/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spotted_sale_radius_ft: radiusFt, spotted_sale_confirm_count: confirmCount }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save.');
+      setSpotRadiusDraft(String(data.spotted_sale_radius_ft));
+      setSpotConfirmCountDraft(String(data.spotted_sale_confirm_count));
+      setSpottedSettingsMigrationNeeded(false);
+      setSpotSettingsSaved(true);
+      setTimeout(() => setSpotSettingsSaved(false), 2500);
+    } catch (err) {
+      setSpotSettingsError(err.message);
+    } finally {
+      setSpotSettingsSaving(false);
+    }
+  }
+
+  // ---------- Spotted-sale reports ----------
+  async function loadSpottedSales() {
+    setSpottedSalesLoading(true);
+    setSpottedSalesError(null);
+    try {
+      const res = await fetch('/api/admin/spotted-sales');
+      if (res.status === 401) return;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load spotted sales.');
+      setSpottedSales(data);
+    } catch (err) {
+      setSpottedSalesError(err.message);
+    } finally {
+      setSpottedSalesLoading(false);
+    }
+  }
+
+  async function handleSetSpottedStatus(spot, status) {
+    try {
+      const res = await fetch(`/api/admin/spotted-sales/${spot.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Update failed.');
+      setSpottedSales((list) => list.map((s) => (s.id === spot.id ? data : s)));
+    } catch (err) {
+      setMessage(`Couldn't update: ${err.message}`);
+    }
+  }
+
+  async function handleDeleteSpotted(spot) {
+    if (!window.confirm("Delete this spotted-sale report? This can't be undone.")) return;
+    try {
+      const res = await fetch(`/api/admin/spotted-sales/${spot.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Delete failed.');
+      setSpottedSales((list) => list.filter((s) => s.id !== spot.id));
+    } catch (err) {
+      setMessage(`Couldn't delete: ${err.message}`);
     }
   }
 
@@ -355,6 +450,7 @@ export default function AdminPage() {
     setSales([]);
     setAds([]);
     setTags([]);
+    setSpottedSales([]);
   }
 
   async function updateSale(id, updates) {
@@ -385,6 +481,45 @@ export default function AdminPage() {
       setMessage(`Rejected "${sale.title}".`);
     } catch (err) {
       setMessage(`Couldn't reject: ${err.message}`);
+    }
+  }
+
+  // ---------- Free "first sellers" Featured comp ----------
+  // A manual admin lever for the launch incentive ("first N real sellers
+  // get a free Featured listing") rather than an automatic counter -- a
+  // human decides who's actually a new outside seller (vs. Jerimiah's own
+  // seed/concierge listings) and can stop or adjust the offer anytime
+  // without touching code. Goes through the same updateSale() -> PATCH
+  // /api/admin/sales/[id] path as Approve/Reject, which is a service-role
+  // write, so it passes the existing self-approval-blocking trigger the
+  // same way the Stripe webhook's paid version does (see
+  // schema-v5-featured-listings.sql) -- this just skips Stripe entirely.
+  async function handleGrantFreeFeature(sale) {
+    try {
+      const until = new Date();
+      until.setDate(until.getDate() + 7);
+      const updated = await updateSale(sale.id, {
+        featured: true,
+        featured_until: until.toISOString().slice(0, 10),
+        featured_comp: true,
+      });
+      setSales((list) => list.map((s) => (s.id === sale.id ? updated : s)));
+      setMessage(`Gave "${sale.title}" a free week of Featured.`);
+    } catch (err) {
+      setMessage(`Couldn't grant Featured: ${err.message}`);
+    }
+  }
+
+  // Turns off the active Featured period but deliberately leaves
+  // featured_comp=true -- it's a historical "this one was ever comped"
+  // marker for the running count below, not a toggle of the comp itself.
+  async function handleRemoveFreeFeature(sale) {
+    try {
+      const updated = await updateSale(sale.id, { featured: false, featured_until: null });
+      setSales((list) => list.map((s) => (s.id === sale.id ? updated : s)));
+      setMessage(`Removed the free Featured comp from "${sale.title}".`);
+    } catch (err) {
+      setMessage(`Couldn't update: ${err.message}`);
     }
   }
 
@@ -532,6 +667,8 @@ export default function AdminPage() {
   const activeAdsCount = ads.filter((a) => a.active).length;
   const openSupportCount =
     errorReports.filter((r) => !r.resolved).length + contactMessages.filter((m) => !m.resolved).length;
+  const featuredCompCount = sales.filter((s) => s.featured_comp).length;
+  const unconfirmedSpottedCount = spottedSales.filter((s) => s.status === 'unconfirmed').length;
 
   if (!authChecked) {
     return (
@@ -625,6 +762,12 @@ export default function AdminPage() {
               {openSupportCount}
             </span>
           </a>
+          <a href="#spotted" className={styles.navPill}>
+            Spotted
+            <span className={`${styles.navPillCount} ${unconfirmedSpottedCount > 0 ? styles.navPillCountAlert : ''}`}>
+              {unconfirmedSpottedCount}
+            </span>
+          </a>
         </nav>
       </div>
 
@@ -648,6 +791,10 @@ export default function AdminPage() {
         <div className={`${styles.statCard} ${openSupportCount > 0 ? styles.statCardAlert : ''}`}>
           <div className={styles.statCardValue}>{openSupportCount}</div>
           <div className={styles.statCardLabel}>Open Support</div>
+        </div>
+        <div className={styles.statCard}>
+          <div className={styles.statCardValue}>{featuredCompCount}</div>
+          <div className={styles.statCardLabel}>Free Comps Given</div>
         </div>
       </div>
 
@@ -859,6 +1006,16 @@ export default function AdminPage() {
                       Reject
                     </button>
                   )}
+                  {sale.status !== 'rejected' &&
+                    (sale.featured ? (
+                      <button type="button" className={styles.linkButton} onClick={() => handleRemoveFreeFeature(sale)}>
+                        ✕ Remove Featured
+                      </button>
+                    ) : (
+                      <button type="button" className={styles.linkButton} onClick={() => handleGrantFreeFeature(sale)}>
+                        🎁 Grant Free Feature
+                      </button>
+                    ))}
                   <button type="button" className={styles.linkButton} onClick={() => startEdit(sale)}>
                     Edit
                   </button>
@@ -1148,6 +1305,135 @@ export default function AdminPage() {
             </div>
           </div>
         ))}
+        </div>
+      </section>
+
+      <section id="spotted" className={styles.section}>
+        <p className={styles.sectionEyebrow}>Crowdsourced</p>
+        <h2 className={styles.sectionHeading}>Spotted Sales</h2>
+        <p className={styles.hint}>
+          Anyone can tap &ldquo;🚩 Spot a Sale&rdquo; on the Map screen to report a sale they drove
+          past, no account needed -- their GPS location marks the spot, never a public address. A
+          spot auto-confirms once enough different people report it, or once someone drives there
+          and taps &ldquo;I found it&rdquo; (which also updates the pin to their more precise
+          location). Report counts below are the only place that number is shown -- individual
+          reporters stay confidential everywhere else.
+        </p>
+
+        <form className={styles.formCard} onSubmit={handleSaveSpotSettings}>
+          <h3 className={styles.subHeading} style={{ marginTop: 0 }}>
+            Spotted-sale settings
+          </h3>
+          {spottedSettingsMigrationNeeded && (
+            <p className={styles.hint} style={{ color: '#b98a1f' }}>
+              Using the defaults of 300 ft / 3 reports for now -- run{' '}
+              <code>supabase/schema-v10-spotted-sales.sql</code> in the Supabase SQL Editor to make
+              this actually savable.
+            </p>
+          )}
+          <div className={styles.tagAddRow}>
+            <label className={styles.hint} style={{ marginRight: 4 }}>
+              Same-sale radius (feet)
+            </label>
+            <input
+              className={styles.input}
+              type="number"
+              min={50}
+              max={2000}
+              step={1}
+              value={spotRadiusDraft}
+              onChange={(e) => setSpotRadiusDraft(e.target.value)}
+            />
+          </div>
+          <p className={styles.hint} style={{ marginTop: -4 }}>
+            How close two reports need to be to count as the same sale -- this also sets how close
+            a visitor needs to get before the app asks them to confirm one.
+          </p>
+          <div className={styles.tagAddRow}>
+            <label className={styles.hint} style={{ marginRight: 4 }}>
+              Reports needed to auto-confirm
+            </label>
+            <input
+              className={styles.input}
+              type="number"
+              min={2}
+              max={10}
+              step={1}
+              value={spotConfirmCountDraft}
+              onChange={(e) => setSpotConfirmCountDraft(e.target.value)}
+            />
+          </div>
+          <div className={styles.tagAddRow}>
+            <button type="submit" className={styles.button} disabled={spotSettingsSaving}>
+              {spotSettingsSaving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+          {spotSettingsError && <p className={styles.error}>{spotSettingsError}</p>}
+          {spotSettingsSaved && <p className={styles.hint} style={{ color: '#2f7a4f' }}>✅ Saved.</p>}
+        </form>
+
+        {spottedSalesError && <div className={styles.bannerError}>{spottedSalesError}</div>}
+        {spottedSalesLoading && <p className={styles.hint}>Loading…</p>}
+        {!spottedSalesLoading && spottedSales.length === 0 && (
+          <p className={styles.hint}>No sales spotted yet.</p>
+        )}
+
+        <div className={styles.list}>
+          {spottedSales.map((spot) => (
+            <div className={styles.row} key={spot.id}>
+              <div className={styles.rowMain}>
+                <span
+                  className={`${styles.badge} ${
+                    spot.status === 'confirmed'
+                      ? styles.badge_approved
+                      : spot.status === 'rejected'
+                      ? styles.badge_rejected
+                      : styles.badge_pending
+                  }`}
+                >
+                  {spot.status}
+                </span>
+                <div>
+                  <p className={styles.rowTitle}>
+                    <a
+                      href={`https://maps.google.com/?q=${spot.lat},${spot.lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {spot.lat.toFixed(5)}, {spot.lng.toFixed(5)} ↗
+                    </a>
+                  </p>
+                  <p className={styles.rowSub}>
+                    {spot.report_count} report{spot.report_count === 1 ? '' : 's'}
+                    {spot.confirmation_method ? ` · confirmed via ${spot.confirmation_method}` : ''}
+                  </p>
+                  <p className={styles.rowSub}>
+                    First seen {new Date(spot.first_reported_at).toLocaleString()} · last{' '}
+                    {new Date(spot.last_reported_at).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+              <div className={styles.actions}>
+                {spot.status !== 'confirmed' && (
+                  <button type="button" className={styles.button} onClick={() => handleSetSpottedStatus(spot, 'confirmed')}>
+                    Approve
+                  </button>
+                )}
+                {spot.status !== 'rejected' && (
+                  <button
+                    type="button"
+                    className={styles.buttonSecondary}
+                    onClick={() => handleSetSpottedStatus(spot, 'rejected')}
+                  >
+                    Reject
+                  </button>
+                )}
+                <button type="button" className={styles.linkButtonDanger} onClick={() => handleDeleteSpotted(spot)}>
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       </section>
     </div>

@@ -214,6 +214,23 @@ body.sign-mode {
 .sale-pin.ad-stop .sign { background: #3B6FB0; color: #fff; border-color: #24518f; }
 .sale-pin.ad-stop .stick { background: #24518f; }
 
+/* Crowdsourced "spotted a sale" pins (see components/AppShell.js's
+   handleReportSpot/handleConfirmSpotted) -- a passerby-reported sighting,
+   not a real listing, so these get their own distinct look. Unconfirmed
+   uses a dashed amber outline (fewer than spotted_sale_confirm_count
+   reports and nobody's physically confirmed it yet); confirmed switches
+   to a solid teal once either enough people report it or someone visits
+   and taps "I found it." */
+.sale-pin.spotted-unconfirmed .sign { background: var(--paper); color: var(--yellow-deep); border: 2px dashed var(--yellow-deep); }
+.sale-pin.spotted-unconfirmed .stick { background: var(--yellow-deep); }
+.sale-pin.spotted-confirmed .sign { background: #2f8f82; color: #fff; border-color: #1f6459; }
+.sale-pin.spotted-confirmed .stick { background: #1f6459; }
+
+/* "Spot a Sale" floating button, next to the "N nearby" chip -- same
+   .map-chip pill look, just as a real <button> instead of a plain <div>. */
+.map-chip.action { border: none; cursor: pointer; font-family: inherit; font-weight: 700; }
+.map-chip.action:disabled { opacity: 0.7; cursor: default; }
+
 /* ---------- LISTING SHEET (draggable, over the map) ---------- */
 /* Replaces the old static ".map-peek" card. Tapping a sale (from Browse,
    or a pin on the map) opens this parked at "half" height; the handle bar

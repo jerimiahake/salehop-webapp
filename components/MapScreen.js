@@ -16,6 +16,7 @@ const LeafletMap = dynamic(() => import('./LeafletMap'), {
 export default function MapScreen({
   sales,
   ads,
+  spottedSales = [],
   favorites,
   selectedSaleId,
   onSelectSale,
@@ -26,6 +27,8 @@ export default function MapScreen({
   active = true,
   session,
   onManageListing,
+  onReportSpot,
+  reportingSpot = false,
 }) {
   const mapWrapRef = useRef(null);
   const selectedSale = sales.find((s) => s.id === selectedSaleId);
@@ -35,6 +38,7 @@ export default function MapScreen({
       <LeafletMap
         sales={sales}
         ads={ads}
+        spottedSales={spottedSales}
         favorites={favorites}
         selectedSaleId={selectedSaleId}
         onSelectSale={onSelectSale}
@@ -44,6 +48,9 @@ export default function MapScreen({
 
       <div className="map-floating-row">
         <div className="map-chip">📍 {sales.length} nearby</div>
+        <button type="button" className="map-chip action" onClick={onReportSpot} disabled={reportingSpot}>
+          {reportingSpot ? '📍 Locating…' : '🚩 Spot a Sale'}
+        </button>
       </div>
 
       <ListingSheet

@@ -5,6 +5,7 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { sampleSales, MAP_CENTER } from '@/lib/sampleData';
 import { nextNDays, distanceMiles, toDateKey, dateInRange } from '@/lib/format';
 import { SITE_URL } from '@/lib/site';
+import { getOrCreateDeviceId } from '@/lib/deviceId';
 import BrowseScreen from './BrowseScreen';
 import MapScreen from './MapScreen';
 import PostScreen from './PostScreen';
@@ -72,6 +73,26 @@ export default function AppShell() {
   // top level (like Toast below) rather than inside the sheet itself, so
   // it isn't clipped by the sheet's/map's own overflow:hidden.
   const [manageMenuSale, setManageMenuSale] = useState(null);
+
+  // Crowdsourced "spotted a sale" reporting (schema-v10) -- anyone can tap
+  // "🚩 Spot a Sale" on the Map screen to report a sighting from their
+  // current location, no account needed. `spottedSales` is the public
+  // list of pins (unconfirmed + confirmed); `spotSettings` is the
+  // admin-adjustable clustering/confirm radius (see /admin's Spotted
+  // Sales settings panel). `liveLocation` is a continuous GPS watch, only
+  // running while the Map screen is active, used to notice when someone
+  // has physically arrived near an unconfirmed spot -- separate from the
+  // one-shot `userLocation` above, which only needs a single fix for
+  // distance sorting. `promptedSpottedIds` remembers which spots this
+  // browser has already been prompted about this session, so lingering
+  // near one doesn't re-prompt every time location updates.
+  const [spottedSales, setSpottedSales] = useState([]);
+  const [spotSettings, setSpotSettings] = useState({ radiusFt: 300 });
+  const [liveLocation, setLiveLocation] = useState(null);
+  const [promptedSpottedIds, setPromptedSpottedIds] = useState(() => new Set());
+  const [confirmPromptSale, setConfirmPromptSale] = useState(null);
+  const [confirmingSpotted, setConfirmingSpotted] = useState(false);
+  const [reportingSpot, setReportingSpot] = useState(false);
 
   const showToast = useCallback((message) => {
     setToast({ message, key: Date.now() });
@@ -235,6 +256,84 @@ export default function AppShell() {
       cancelled = true;
     };
   }, []);
+
+  // Load the crowdsourced "spotted a sale" pins (unconfirmed + confirmed --
+  // see schema-v10). Pulled out to a stable function, same reasoning as
+  // loadSales above, so reporting/confirming one can refresh the list
+  // without a full page reload.
+  const loadSpottedSales = useCallback(async () => {
+    try {
+      const res = await fetch('/api/spotted-sales');
+      if (!res.ok) return;
+      const data = await res.json();
+      setSpottedSales(Array.isArray(data) ? data : []);
+    } catch {
+      // Quietly no-op -- spotted sales are a nice-to-have map overlay,
+      // not core to Browse/Map working at all.
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSpottedSales();
+  }, [loadSpottedSales]);
+
+  // Load the spotted-sale clustering/confirm radius (schema-v10, admin-
+  // adjustable). Kept as its own query, separate from the ad_interval
+  // fetch above, so a site that hasn't run this migration yet doesn't
+  // also break ad_interval loading (selecting a column that doesn't
+  // exist yet would fail the whole query if they were combined).
+  useEffect(() => {
+    if (!isSupabaseConfigured) return undefined;
+    let cancelled = false;
+
+    supabase
+      .from('app_settings')
+      .select('spotted_sale_radius_ft')
+      .eq('id', 1)
+      .single()
+      .then(({ data, error }) => {
+        if (cancelled || error || !data) return;
+        if (Number.isFinite(data.spotted_sale_radius_ft)) {
+          setSpotSettings({ radiusFt: data.spotted_sale_radius_ft });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Continuous location while the Map screen is active -- needed so
+  // "Jane driving toward the spot" actually gets noticed as her position
+  // updates, unlike the one-shot `userLocation` fix above. Only runs on
+  // Map (battery/perf reasons) and stops the moment she navigates away.
+  useEffect(() => {
+    if (activeScreen !== 'map' || !('geolocation' in navigator)) return undefined;
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => setLiveLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [activeScreen]);
+
+  // The actual proximity check -- whenever her live location or the
+  // spotted-sales list changes, see if she's now within the confirm
+  // radius of an unconfirmed spot she hasn't already been asked about.
+  // In-app prompt only (no background push) -- this only ever fires while
+  // she has the app open on the Map screen.
+  useEffect(() => {
+    if (!liveLocation || confirmPromptSale) return;
+    const match = spottedSales.find((spot) => {
+      if (spot.status !== 'unconfirmed' || promptedSpottedIds.has(spot.id)) return false;
+      const distanceFt = (distanceMiles(liveLocation, spot) ?? Infinity) * 5280;
+      return distanceFt <= spotSettings.radiusFt;
+    });
+    if (match) {
+      setPromptedSpottedIds((prev) => new Set(prev).add(match.id));
+      setConfirmPromptSale(match);
+    }
+  }, [liveLocation, spottedSales, spotSettings, confirmPromptSale, promptedSpottedIds]);
 
   // Load saved favorites (route stops) from this browser -- no account needed.
   useEffect(() => {
@@ -547,6 +646,99 @@ export default function AppShell() {
     showToast(message || '🎉 Thanks! Your sale was submitted and is awaiting a quick review before it goes live.');
   }
 
+  // "🚩 Spot a Sale" on the Map screen -- Bob's side of the crowdsourced
+  // flow. Grabs a fresh GPS fix and reports it; the server does the
+  // clustering (merge into a nearby existing report, or start a new pin)
+  // and tells us whether this just crossed the auto-confirm threshold.
+  const handleReportSpot = useCallback(() => {
+    if (!('geolocation' in navigator)) {
+      showToast("Your browser doesn't support location -- can't report a sale from here.");
+      return;
+    }
+    setReportingSpot(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const deviceId = getOrCreateDeviceId();
+          const res = await fetch('/api/spotted-sales', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude, deviceId }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Could not report that sale.');
+          if (data.alreadyReported) {
+            showToast("You've already reported a sale near here -- thanks!");
+          } else if (data.justConfirmed) {
+            showToast('🎉 Enough people have reported this spot -- it just got confirmed!');
+          } else {
+            showToast('🚩 Thanks! Reported -- someone driving by can go confirm it.');
+          }
+          loadSpottedSales();
+        } catch (err) {
+          showToast(`Couldn't report that: ${err.message}`);
+        } finally {
+          setReportingSpot(false);
+        }
+      },
+      () => {
+        showToast('Location access is needed to report a sale.');
+        setReportingSpot(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }, [showToast, loadSpottedSales]);
+
+  // Jane's side -- responds to the proximity prompt below. `accept=false`
+  // just dismisses it (already marked "prompted" so it won't nag again
+  // this session); `accept=true` grabs her current precise location and
+  // sends it as the confirmation, which also becomes the spot's new,
+  // presumably more accurate, location.
+  const handleConfirmSpotted = useCallback(
+    (accept) => {
+      if (!accept) {
+        setConfirmPromptSale(null);
+        return;
+      }
+      if (!confirmPromptSale) return;
+      if (!('geolocation' in navigator)) {
+        showToast("Your browser doesn't support location -- can't confirm from here.");
+        setConfirmPromptSale(null);
+        return;
+      }
+      setConfirmingSpotted(true);
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          try {
+            const res = await fetch(`/api/spotted-sales/${confirmPromptSale.id}/confirm`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Could not confirm that sale.');
+            showToast(
+              data.alreadyDone ? 'Someone already confirmed this one -- thanks anyway!' : '🎉 Thanks -- confirmed!'
+            );
+            loadSpottedSales();
+          } catch (err) {
+            showToast(`Couldn't confirm: ${err.message}`);
+          } finally {
+            setConfirmingSpotted(false);
+            setConfirmPromptSale(null);
+          }
+        },
+        () => {
+          showToast('Location access is needed to confirm a sale.');
+          setConfirmingSpotted(false);
+          setConfirmPromptSale(null);
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    },
+    [confirmPromptSale, showToast, loadSpottedSales]
+  );
+
   return (
     <div className="device">
       <div className="notch" />
@@ -572,6 +764,7 @@ export default function AppShell() {
           <MapScreen
             sales={filteredSales}
             ads={ads}
+            spottedSales={spottedSales}
             favorites={favorites}
             selectedSaleId={selectedSaleId}
             onSelectSale={setSelectedSaleId}
@@ -582,6 +775,8 @@ export default function AppShell() {
             active={activeScreen === 'map'}
             session={session}
             onManageListing={(sale) => setManageMenuSale(sale)}
+            onReportSpot={handleReportSpot}
+            reportingSpot={reportingSpot}
           />
         </div>
         <div className={`screen ${activeScreen === 'post' ? 'active' : ''}`}>
@@ -685,6 +880,33 @@ export default function AppShell() {
 
             <button type="button" className="manage-menu-cancel" onClick={() => setManageMenuSale(null)}>
               Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {confirmPromptSale && (
+        <div className="manage-menu-backdrop" onClick={() => !confirmingSpotted && handleConfirmSpotted(false)}>
+          <div className="manage-menu" onClick={(e) => e.stopPropagation()}>
+            <div className="manage-menu-title">Spotted sale nearby</div>
+            <p style={{ fontSize: 13, color: 'var(--ink-soft)', textAlign: 'center', margin: '0 0 4px' }}>
+              Looks like you&apos;re near a sale someone reported. Are you here?
+            </p>
+            <button
+              type="button"
+              className="manage-menu-item"
+              disabled={confirmingSpotted}
+              onClick={() => handleConfirmSpotted(true)}
+            >
+              {confirmingSpotted ? 'Confirming…' : '✅ Yes, I found it'}
+            </button>
+            <button
+              type="button"
+              className="manage-menu-cancel"
+              disabled={confirmingSpotted}
+              onClick={() => handleConfirmSpotted(false)}
+            >
+              Not here
             </button>
           </div>
         </div>
