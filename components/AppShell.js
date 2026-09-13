@@ -16,7 +16,6 @@ import Toast from './Toast';
 import ShareToFacebookButton from './ShareToFacebookButton';
 import WelcomeOverlay from './WelcomeOverlay';
 import SpottedSaleSheet from './SpottedSaleSheet';
-import BadgeUnlockModal from './BadgeUnlockModal';
 
 const FAVORITES_KEY = 'salehop:favorites';
 const ONBOARDING_KEY = 'salehop:onboardingSeen';
@@ -74,13 +73,6 @@ export default function AppShell() {
   const [myAdsLoading, setMyAdsLoading] = useState(false);
   const [myAdsRefreshKey, setMyAdsRefreshKey] = useState(0);
   const [editingAd, setEditingAd] = useState(null);
-
-  // Badges (see handleNewBadges below) -- badge objects queued up to
-  // celebrate, most-recent-batch-last. BadgeUnlockModal, rendered near the
-  // other overlays, is what actually shows them and decides whether to
-  // ask for an email/username.
-  const [pendingBadges, setPendingBadges] = useState([]);
-  const [showBadges, setShowBadges] = useState(false);
   // id of whichever listing's "Feature — $10" button was just tapped, so
   // only that one button/menu shows a loading state while checkout starts.
   const [featuringId, setFeaturingId] = useState(null);
@@ -795,22 +787,6 @@ export default function AppShell() {
     showToast(message || '🎉 Thanks! Your sale was submitted and is awaiting a quick review before it goes live.');
   }
 
-  // Badges (supabase/schema-v13-badges.sql, lib/badges.js) -- any API call
-  // that can earn one (spotting/confirming a sale, contributing a photo,
-  // checking in) returns a `newBadges` array. This just queues whatever
-  // comes back; BadgeUnlockModal (rendered below, near the other overlays)
-  // is what actually decides whether to ask for an email/username the
-  // first time, or just show a quick congrats if this device already has
-  // one on file.
-  const handleNewBadges = useCallback((newBadges) => {
-    if (!newBadges || newBadges.length === 0) return;
-    setPendingBadges((prev) => [...prev, ...newBadges]);
-  }, []);
-
-  function handleBadgeModalDone() {
-    setPendingBadges([]);
-  }
-
   // "🚩 Spot a Sale" on the Map screen -- Bob's side of the crowdsourced
   // flow. Grabs a fresh GPS fix and reports it; the server does the
   // clustering (merge into a nearby existing report, or start a new pin)
@@ -840,7 +816,6 @@ export default function AppShell() {
             showToast('🚩 Thanks! Reported -- someone driving by can go confirm it.');
           }
           loadSpottedSales();
-          handleNewBadges(data.newBadges);
         } catch (err) {
           showToast(`Couldn't report that: ${err.message}`);
         } finally {
@@ -853,7 +828,7 @@ export default function AppShell() {
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
-  }, [showToast, loadSpottedSales, handleNewBadges]);
+  }, [showToast, loadSpottedSales]);
 
   // Jane's side -- responds to the proximity prompt below. `accept=false`
   // just dismisses it (already marked "prompted" so it won't nag again
@@ -971,7 +946,6 @@ export default function AppShell() {
           formData.append('lat', String(location.lat));
           formData.append('lng', String(location.lng));
         }
-        formData.append('deviceId', getOrCreateDeviceId());
 
         const res = await fetch(`/api/spotted-sales/${selectedSpottedId}/photos`, {
           method: 'POST',
@@ -983,7 +957,6 @@ export default function AppShell() {
         setSpottedDetail(data);
         loadSpottedSales();
         showToast('✅ Added -- thanks for helping out!');
-        handleNewBadges(data.newBadges);
         return true;
       } catch (err) {
         setContributeSpottedError(err.message);
@@ -992,7 +965,7 @@ export default function AppShell() {
         setContributingSpotted(false);
       }
     },
-    [selectedSpottedId, loadSpottedSales, showToast, handleNewBadges]
+    [selectedSpottedId, loadSpottedSales, showToast]
   );
 
   return (
@@ -1036,8 +1009,6 @@ export default function AppShell() {
             onManageListing={(sale) => setManageMenuSale(sale)}
             onReportSpot={handleReportSpot}
             reportingSpot={reportingSpot}
-            onNewBadges={handleNewBadges}
-            showToast={showToast}
           />
         </div>
         <div className={`screen ${activeScreen === 'post' ? 'active' : ''}`}>
@@ -1081,9 +1052,6 @@ export default function AppShell() {
             onEditAd={handleEditAd}
             onCancelEditAd={handleCancelEditAd}
             onAdEditDone={handleAdEditDone}
-            showBadges={showBadges}
-            onOpenBadges={() => setShowBadges(true)}
-            onCloseBadges={() => setShowBadges(false)}
           />
         </div>
       </div>
@@ -1180,10 +1148,6 @@ export default function AppShell() {
             </button>
           </div>
         </div>
-      )}
-
-      {pendingBadges.length > 0 && (
-        <BadgeUnlockModal badges={pendingBadges} onClose={handleBadgeModalDone} showToast={showToast} />
       )}
 
       {selectedSpottedId && (

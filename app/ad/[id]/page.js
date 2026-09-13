@@ -1,9 +1,7 @@
 import { getAdForShare } from '@/lib/getAdForShare';
-import { getAdMayor } from '@/lib/getAdMayor';
 import { SITE_URL } from '@/lib/site';
 import ShareToFacebookButton from '@/components/ShareToFacebookButton';
 import HtmlSnippet from '@/components/HtmlSnippet';
-import AdCheckIn from '@/components/AdCheckIn';
 
 // A real, public, individually-shareable page for one active ad -- the ad
 // equivalent of /listing/[id]. This is what an advertiser can share as
@@ -71,8 +69,6 @@ export default async function AdPage({ params }) {
   }
 
   const adUrl = `${SITE_URL}/ad/${ad.id}`;
-  const isPhysical = ad.location_type === 'physical';
-  const mayor = isPhysical ? await getAdMayor(ad.id) : null;
 
   return (
     <div className="share-page">
@@ -99,8 +95,6 @@ export default async function AdPage({ params }) {
           )}
 
           {ad.description && <p className="share-desc">{ad.description}</p>}
-
-          {isPhysical && <AdCheckIn adId={ad.id} mayor={mayor} />}
 
           {ad.ad_type === 'snippet' && (
             <div style={{ marginTop: 12 }}>

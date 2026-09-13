@@ -11,10 +11,21 @@ const DEFAULT_AD_INTERVAL = 4;
 
 function buildFeed(sales, ads, adInterval) {
   const feed = sales.map((sale) => ({ type: 'sale', sale }));
-  if (!ads || ads.length === 0 || sales.length === 0) return feed;
+  if (!ads || ads.length === 0) return feed;
 
-  // Guard against a bad/unset value (0, negative, not-a-number) rather
-  // than dividing by it or spamming an ad after every single listing.
+  // Ad frequency of 0 is a special "show every ad" mode, meant for slow or
+  // sparse sale days when there's little else to fill the screen with --
+  // every active ad gets appended after the real sales feed, regardless of
+  // how many (or how few -- even zero) sales there are, instead of being
+  // mixed in every `adInterval` listings like the normal behavior below.
+  if (adInterval === 0) {
+    return [...feed, ...ads.map((ad) => ({ type: 'ad', ad, key: `ad-all-${ad.id}` }))];
+  }
+
+  if (sales.length === 0) return feed;
+
+  // Guard against a bad/unset value (negative, not-a-number) rather than
+  // dividing by it or spamming an ad after every single listing.
   const interval = Number.isInteger(adInterval) && adInterval > 0 ? adInterval : DEFAULT_AD_INTERVAL;
 
   const withAds = [];

@@ -63,24 +63,37 @@ export async function POST(request) {
     );
   }
 
-  const { data, error } = await supabaseAdmin
-    .from('ads')
-    .insert({
-      ad_type: adType,
-      title: body.title,
-      description: body.description || null,
-      image_url: adType === 'image' ? body.image_url || null : null,
-      link_url: adType === 'image' ? body.link_url : null,
-      sponsor_name: adType === 'image' ? body.sponsor_name || null : null,
-      html_snippet: adType === 'snippet' ? body.html_snippet : null,
-      location_type: locationType,
-      address: locationType === 'physical' ? body.address : null,
-      lat: locationType === 'physical' ? body.lat : null,
-      lng: locationType === 'physical' ? body.lng : null,
-      active: true,
-    })
-    .select()
-    .single();
+  const newAd = {
+    ad_type: adType,
+    title: body.title,
+    description: body.description || null,
+    image_url: adType === 'image' ? body.image_url || null : null,
+    link_url: adType === 'image' ? body.link_url : null,
+    sponsor_name: adType === 'image' ? body.sponsor_name || null : null,
+    html_snippet: adType === 'snippet' ? body.html_snippet : null,
+    location_type: locationType,
+    address: locationType === 'physical' ? body.address : null,
+    lat: locationType === 'physical' ? body.lat : null,
+    lng: locationType === 'physical' ? body.lng : null,
+    // Optional: hands this ad over to a business owner, who can then
+    // sign in with this exact email (the existing seller magic-link/
+    // password accounts) and edit it themselves. Leave blank to keep an
+    // ad 100% admin-only, same as before this existed.
+    owner_email: body.owner_email ? String(body.owner_email).trim() || null : null,
+    active: true,
+  };
+
+  let { data, error } = await supabaseAdmin.from('ads').insert(newAd).select().single();
+
+  // 42703 = Postgres "undefined column" -- schema-v12-ad-ownership.sql
+  // (which adds owner_email) hasn't been run yet. Rather than failing
+  // every single ad creation until that migration is run, silently drop
+  // just that one field and retry once, same graceful-degradation pattern
+  // used elsewhere in this app for not-yet-migrated columns.
+  if (error?.code === '42703') {
+    const { owner_email, ...withoutOwnerEmail } = newAd;
+    ({ data, error } = await supabaseAdmin.from('ads').insert(withoutOwnerEmail).select().single());
+  }
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

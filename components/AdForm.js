@@ -33,6 +33,7 @@ export default function AdForm({ styles, onCreated, onCancel }) {
   const [sponsorName, setSponsorName] = useState('');
   const [image, setImage] = useState(null); // { file, previewUrl }
   const [htmlSnippet, setHtmlSnippet] = useState('');
+  const [ownerEmail, setOwnerEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -114,6 +115,7 @@ export default function AdForm({ styles, onCreated, onCancel }) {
           address: locationType === 'physical' ? address.trim() : null,
           lat,
           lng,
+          owner_email: ownerEmail.trim() || null,
         }),
       });
       const data = await res.json();
@@ -231,6 +233,20 @@ export default function AdForm({ styles, onCreated, onCancel }) {
           </p>
         </>
       )}
+
+      <input
+        className={styles.input}
+        type="email"
+        placeholder="Owner email (optional -- lets this business sign in and edit their own ad)"
+        value={ownerEmail}
+        onChange={(e) => setOwnerEmail(e.target.value)}
+      />
+      <p className={styles.hint} style={{ marginTop: -4 }}>
+        Leave blank to keep this ad admin-only. Set it to let that business sign in (Account tab →
+        enter this exact email) and edit their own title, description, image, link, and location
+        from a &ldquo;My Ad&rdquo; section -- they can&apos;t change the ad type, embed code, or
+        active/paused status themselves.
+      </p>
 
       {error && <p className={styles.error}>{error}</p>}
 

@@ -14,6 +14,12 @@ const EDITABLE_FIELDS = [
   'address',
   'lat',
   'lng',
+  // Who (if anyone) can sign in and edit this ad themselves -- see
+  // supabase/schema-v12-ad-ownership.sql. Only ever settable from here
+  // (this route runs through the service-role connection, which bypasses
+  // the RLS trigger that blocks an owner from changing their own
+  // owner_email), never by the advertiser's own edit form.
+  'owner_email',
 ];
 
 export async function PATCH(request, { params }) {
@@ -39,12 +45,18 @@ export async function PATCH(request, { params }) {
     return NextResponse.json({ error: 'Nothing to update.' }, { status: 400 });
   }
 
-  const { data, error } = await supabaseAdmin
-    .from('ads')
-    .update(updates)
-    .eq('id', params.id)
-    .select()
-    .single();
+  let { data, error } = await supabaseAdmin.from('ads').update(updates).eq('id', params.id).select().single();
+
+  // 42703 = Postgres "undefined column" -- schema-v12-ad-ownership.sql
+  // (which adds owner_email) hasn't been run yet. Rather than failing
+  // this save entirely (even when owner_email wasn't the field someone
+  // actually meant to change -- the admin panel's inline edit form always
+  // includes it), silently drop just that one field and retry once, same
+  // graceful-degradation pattern used elsewhere in this app.
+  if (error?.code === '42703' && 'owner_email' in updates) {
+    const { owner_email, ...withoutOwnerEmail } = updates;
+    ({ data, error } = await supabaseAdmin.from('ads').update(withoutOwnerEmail).eq('id', params.id).select().single());
+  }
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

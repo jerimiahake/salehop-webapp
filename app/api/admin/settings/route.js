@@ -69,8 +69,11 @@ export async function PATCH(request) {
 
   if ('ad_interval' in body) {
     const adInterval = Number(body.ad_interval);
-    if (!Number.isInteger(adInterval) || adInterval < 1 || adInterval > 50) {
-      return NextResponse.json({ error: 'Ad frequency must be a whole number between 1 and 50.' }, { status: 400 });
+    if (!Number.isInteger(adInterval) || adInterval < 0 || adInterval > 50) {
+      return NextResponse.json(
+        { error: 'Ad frequency must be a whole number between 0 and 50, where 0 shows every ad.' },
+        { status: 400 }
+      );
     }
     updates.ad_interval = adInterval;
   }

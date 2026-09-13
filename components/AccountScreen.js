@@ -6,7 +6,6 @@ import { formatTimeRange, formatDateRange, toDateKey } from '@/lib/format';
 import { SITE_URL } from '@/lib/site';
 import ListingForm from './ListingForm';
 import AdOwnerForm from './AdOwnerForm';
-import BadgesScreen from './BadgesScreen';
 import ShareToFacebookButton from './ShareToFacebookButton';
 
 const STATUS_LABEL = { pending: 'Pending Review', approved: 'Live', rejected: 'Not Approved' };
@@ -45,9 +44,6 @@ export default function AccountScreen({
   onEditAd,
   onCancelEditAd,
   onAdEditDone,
-  showBadges,
-  onOpenBadges,
-  onCloseBadges,
 }) {
   const [email, setEmail] = useState('');
   const [sending, setSending] = useState(false);
@@ -92,9 +88,9 @@ export default function AccountScreen({
   // the same way it does during Post -- tapping away mid-edit would
   // otherwise silently discard unsaved changes.
   useEffect(() => {
-    onEditingChange?.(Boolean(editingSale) || Boolean(editingAd) || Boolean(showBadges));
+    onEditingChange?.(Boolean(editingSale) || Boolean(editingAd));
     return () => onEditingChange?.(false);
-  }, [editingSale, editingAd, showBadges, onEditingChange]);
+  }, [editingSale, editingAd, onEditingChange]);
 
   async function handleSendLink() {
     if (!email.trim()) return;
@@ -289,13 +285,6 @@ export default function AccountScreen({
     );
   }
 
-  // ---------- Badges (works whether or not you're signed in -- Scout/
-  // Explorer/Community badges are tracked anonymously by device, and
-  // Seller badges only add themselves to the grid once you are) ----------
-  if (showBadges) {
-    return <BadgesScreen onClose={() => onCloseBadges?.()} listings={listings} showToast={showToast} />;
-  }
-
   // ---------- Editing an existing listing ----------
   if (session && editingSale) {
     return (
@@ -336,13 +325,6 @@ export default function AccountScreen({
         </div>
 
         <div className="account-scroll">
-          <div className="my-listing-card clickable" style={{ marginBottom: 14 }} onClick={() => onOpenBadges?.()}>
-            <p className="card-title">🏅 My Badges</p>
-            <p className="card-addr">
-              Spot sales, check in, and earn badges -- no account needed to start.
-            </p>
-          </div>
-
           <div className="field-group">
             <p className="field-label">Sign In</p>
 
@@ -557,11 +539,6 @@ export default function AccountScreen({
           <button type="button" className="chip" onClick={handleSignOut}>
             Sign Out
           </button>
-        </div>
-
-        <div className="my-listing-card clickable" style={{ marginTop: 14 }} onClick={() => onOpenBadges?.()}>
-          <p className="card-title">🏅 My Badges</p>
-          <p className="card-addr">See what you&apos;ve earned so far, and the leaderboard</p>
         </div>
 
         {!session.user.user_metadata?.has_password && (
