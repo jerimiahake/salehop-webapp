@@ -1,5 +1,5 @@
-﻿import { getSaleForShare } from '@/lib/getSaleForShare';
-import { formatTimeRange, formatDateRange } from '@/lib/format';
+import { getSaleForShare } from '@/lib/getSaleForShare';
+import { formatTimeRange, formatDateRange, toIsoDateTime } from '@/lib/format';
 import { SITE_URL } from '@/lib/site';
 import ShareToFacebookButton from '@/components/ShareToFacebookButton';
 
@@ -66,8 +66,43 @@ export default async function ListingPage({ params }) {
   const cover = sale.photo_urls && sale.photo_urls.length > 0 ? sale.photo_urls[0] : null;
   const listingUrl = `${SITE_URL}/listing/${sale.id}`;
 
+  // schema.org Event markup -- lets a garage sale potentially show up in
+  // Google's richer event results (and Maps' "things happening near you")
+  // instead of competing purely on the crowded plain-text "garage sales
+  // near me" results page. No offer/organizer claimed here -- SaleHop
+  // hosts the listing but doesn't run the sale itself, so only the facts
+  // actually on file (when, where, what) are asserted.
+  const eventJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Event',
+    name: sale.title,
+    description: sale.description || `${formatDateRange(sale.sale_date, sale.end_date)} · ${sale.address}`,
+    startDate: toIsoDateTime(sale.sale_date, sale.start_time),
+    endDate: toIsoDateTime(sale.end_date || sale.sale_date, sale.end_time),
+    eventStatus: 'https://schema.org/EventScheduled',
+    eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
+    location: {
+      '@type': 'Place',
+      name: sale.title,
+      address: {
+        '@type': 'PostalAddress',
+        streetAddress: sale.address,
+      },
+      ...(Number.isFinite(sale.lat) && Number.isFinite(sale.lng)
+        ? { geo: { '@type': 'GeoCoordinates', latitude: sale.lat, longitude: sale.lng } }
+        : {}),
+    },
+    ...(cover ? { image: [cover] } : {}),
+    url: listingUrl,
+  };
+
   return (
     <div className="share-page">
+      {/* eslint-disable-next-line react/no-danger */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(eventJsonLd) }}
+      />
       <div className="share-card">
         <div className="share-logo marker-font">
           Sale<span>Hop</span>
