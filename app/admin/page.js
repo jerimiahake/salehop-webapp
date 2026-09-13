@@ -60,24 +60,6 @@ export default function AdminPage() {
   const [adIntervalSaved, setAdIntervalSaved] = useState(false);
   const [settingsMigrationNeeded, setSettingsMigrationNeeded] = useState(false);
 
-  // ---------- Crowdsourced "spotted a sale" reports (schema-v10) ----------
-  const [spottedSales, setSpottedSales] = useState([]);
-  const [spottedSalesLoading, setSpottedSalesLoading] = useState(false);
-  const [spottedSalesError, setSpottedSalesError] = useState(null);
-
-  const [spotRadiusDraft, setSpotRadiusDraft] = useState('300');
-  const [spotConfirmCountDraft, setSpotConfirmCountDraft] = useState('3');
-  const [spotSettingsSaving, setSpotSettingsSaving] = useState(false);
-  const [spotSettingsError, setSpotSettingsError] = useState(null);
-  const [spotSettingsSaved, setSpotSettingsSaved] = useState(false);
-  const [spottedSettingsMigrationNeeded, setSpottedSettingsMigrationNeeded] = useState(false);
-
-  // ---------- Players / leads (schema-v13-badges.sql) ----------
-  const [players, setPlayers] = useState([]);
-  const [playersLoading, setPlayersLoading] = useState(false);
-  const [playersError, setPlayersError] = useState(null);
-  const [playersMigrationNeeded, setPlayersMigrationNeeded] = useState(false);
-
   useEffect(() => {
     loadSales();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -90,8 +72,6 @@ export default function AdminPage() {
       loadErrorReports();
       loadContactMessages();
       loadAdInterval();
-      loadSpottedSales();
-      loadPlayers();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed]);
@@ -133,7 +113,7 @@ export default function AdminPage() {
     }
   }
 
-  // ---------- Ad frequency + spotted-sale settings (one shared row) ----------
+  // ---------- Ad frequency setting ----------
   async function loadAdInterval() {
     setAdIntervalLoading(true);
     setAdIntervalError(null);
@@ -145,9 +125,6 @@ export default function AdminPage() {
       setAdInterval(data.ad_interval);
       setAdIntervalDraft(String(data.ad_interval));
       setSettingsMigrationNeeded(Boolean(data.migrationNeeded));
-      setSpotRadiusDraft(String(data.spotted_sale_radius_ft ?? 300));
-      setSpotConfirmCountDraft(String(data.spotted_sale_confirm_count ?? 3));
-      setSpottedSettingsMigrationNeeded(Boolean(data.spottedSettingsMigrationNeeded));
     } catch (err) {
       setAdIntervalError(err.message);
     } finally {
@@ -155,169 +132,11 @@ export default function AdminPage() {
     }
   }
 
-  async function handleSaveSpotSettings(e) {
-    e.preventDefault();
-    const radiusFt = Number(spotRadiusDraft);
-    const confirmCount = Number(spotConfirmCountDraft);
-    if (!Number.isInteger(radiusFt) || radiusFt < 50 || radiusFt > 2000) {
-      setSpotSettingsError('Enter a whole number of feet between 50 and 2000.');
-      return;
-    }
-    if (!Number.isInteger(confirmCount) || confirmCount < 2 || confirmCount > 10) {
-      setSpotSettingsError('Enter a whole number between 2 and 10.');
-      return;
-    }
-    setSpotSettingsSaving(true);
-    setSpotSettingsError(null);
-    setSpotSettingsSaved(false);
-    try {
-      const res = await fetch('/api/admin/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spotted_sale_radius_ft: radiusFt, spotted_sale_confirm_count: confirmCount }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to save.');
-      setSpotRadiusDraft(String(data.spotted_sale_radius_ft));
-      setSpotConfirmCountDraft(String(data.spotted_sale_confirm_count));
-      setSpottedSettingsMigrationNeeded(false);
-      setSpotSettingsSaved(true);
-      setTimeout(() => setSpotSettingsSaved(false), 2500);
-    } catch (err) {
-      setSpotSettingsError(err.message);
-    } finally {
-      setSpotSettingsSaving(false);
-    }
-  }
-
-  // ---------- Spotted-sale reports ----------
-  async function loadSpottedSales() {
-    setSpottedSalesLoading(true);
-    setSpottedSalesError(null);
-    try {
-      const res = await fetch('/api/admin/spotted-sales');
-      if (res.status === 401) return;
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to load spotted sales.');
-      setSpottedSales(data);
-    } catch (err) {
-      setSpottedSalesError(err.message);
-    } finally {
-      setSpottedSalesLoading(false);
-    }
-  }
-
-  async function handleSetSpottedStatus(spot, status) {
-    try {
-      const res = await fetch(`/api/admin/spotted-sales/${spot.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Update failed.');
-      setSpottedSales((list) => list.map((s) => (s.id === spot.id ? data : s)));
-    } catch (err) {
-      setMessage(`Couldn't update: ${err.message}`);
-    }
-  }
-
-  async function handleDeleteSpotted(spot) {
-    if (!window.confirm("Delete this spotted-sale report? This can't be undone.")) return;
-    try {
-      const res = await fetch(`/api/admin/spotted-sales/${spot.id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Delete failed.');
-      setSpottedSales((list) => list.filter((s) => s.id !== spot.id));
-    } catch (err) {
-      setMessage(`Couldn't delete: ${err.message}`);
-    }
-  }
-
-  // Anyone can add a photo/note to a spotted sale with no approval step
-  // (see app/api/spotted-sales/[id]/photos/route.js) -- these two are the
-  // after-the-fact moderation path for removing one that shouldn't be
-  // there, without rejecting/deleting the whole spotted sale.
-  async function handleRemoveSpottedPhoto(spot, url) {
-    if (!window.confirm('Remove this photo?')) return;
-    try {
-      const res = await fetch(`/api/admin/spotted-sales/${spot.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ removePhotoUrl: url }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Remove failed.');
-      setSpottedSales((list) => list.map((s) => (s.id === spot.id ? data : s)));
-    } catch (err) {
-      setMessage(`Couldn't remove that photo: ${err.message}`);
-    }
-  }
-
-  async function handleRemoveSpottedNote(spot, index) {
-    if (!window.confirm('Remove this note?')) return;
-    try {
-      const res = await fetch(`/api/admin/spotted-sales/${spot.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ removeNoteAt: index }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Remove failed.');
-      setSpottedSales((list) => list.map((s) => (s.id === spot.id ? data : s)));
-    } catch (err) {
-      setMessage(`Couldn't remove that note: ${err.message}`);
-    }
-  }
-
-  // ---------- Players / leads ----------
-  async function loadPlayers() {
-    setPlayersLoading(true);
-    setPlayersError(null);
-    try {
-      const res = await fetch('/api/admin/players');
-      if (res.status === 401) return;
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to load players.');
-      setPlayers(data.players || []);
-      setPlayersMigrationNeeded(Boolean(data.migrationNeeded));
-    } catch (err) {
-      setPlayersError(err.message);
-    } finally {
-      setPlayersLoading(false);
-    }
-  }
-
-  // Builds the CSV entirely client-side from data already loaded -- no new
-  // endpoint needed. Quotes every field and doubles any embedded quotes so
-  // a comma or quote in a name/email doesn't corrupt the column layout.
-  function handleExportPlayersCsv() {
-    const header = ['Email', 'Phone', 'Username', 'Badges', 'Marketing OK', 'Joined'];
-    const csvField = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
-    const lines = [header.map(csvField).join(',')];
-    players.forEach((p) => {
-      lines.push(
-        [p.email, p.phone, p.username, p.badgeCount, p.marketingOptIn ? 'Yes' : 'No', new Date(p.createdAt).toLocaleString()]
-          .map(csvField)
-          .join(',')
-      );
-    });
-    const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `salehop-leads-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }
-
   async function handleSaveAdInterval(e) {
     e.preventDefault();
     const value = Number(adIntervalDraft);
-    if (!Number.isInteger(value) || value < 0 || value > 50) {
-      setAdIntervalError('Enter a whole number between 0 and 50 (0 shows every ad).');
+    if (!Number.isInteger(value) || value < 1 || value > 50) {
+      setAdIntervalError('Enter a whole number between 1 and 50.');
       return;
     }
     setAdIntervalSaving(true);
@@ -536,8 +355,6 @@ export default function AdminPage() {
     setSales([]);
     setAds([]);
     setTags([]);
-    setSpottedSales([]);
-    setPlayers([]);
   }
 
   async function updateSale(id, updates) {
@@ -699,8 +516,6 @@ export default function AdminPage() {
       html_snippet: ad.html_snippet || '',
       location_type: ad.location_type || 'online',
       address: ad.address || '',
-      owner_email: ad.owner_email || '',
-      link_only: ad.link_only || false,
     });
   }
 
@@ -735,8 +550,6 @@ export default function AdminPage() {
         draft.lng = null;
       }
 
-      draft.owner_email = draft.owner_email.trim() || null;
-
       const updated = await updateAd(ad.id, draft);
       setAds((list) => list.map((a) => (a.id === ad.id ? updated : a)));
       setMessage(`Saved changes to "${updated.title}".`);
@@ -759,8 +572,6 @@ export default function AdminPage() {
   const openSupportCount =
     errorReports.filter((r) => !r.resolved).length + contactMessages.filter((m) => !m.resolved).length;
   const featuredCompCount = sales.filter((s) => s.featured_comp).length;
-  const unconfirmedSpottedCount = spottedSales.filter((s) => s.status === 'unconfirmed').length;
-  const leadsCapturedCount = players.filter((p) => p.email || p.phone).length;
 
   if (!authChecked) {
     return (
@@ -854,16 +665,6 @@ export default function AdminPage() {
               {openSupportCount}
             </span>
           </a>
-          <a href="#spotted" className={styles.navPill}>
-            Spotted
-            <span className={`${styles.navPillCount} ${unconfirmedSpottedCount > 0 ? styles.navPillCountAlert : ''}`}>
-              {unconfirmedSpottedCount}
-            </span>
-          </a>
-          <a href="#players" className={styles.navPill}>
-            Players
-            <span className={styles.navPillCount}>{leadsCapturedCount}</span>
-          </a>
         </nav>
       </div>
 
@@ -891,10 +692,6 @@ export default function AdminPage() {
         <div className={styles.statCard}>
           <div className={styles.statCardValue}>{featuredCompCount}</div>
           <div className={styles.statCardLabel}>Free Comps Given</div>
-        </div>
-        <div className={styles.statCard}>
-          <div className={styles.statCardValue}>{leadsCapturedCount}</div>
-          <div className={styles.statCardLabel}>Leads Captured</div>
         </div>
       </div>
 
@@ -1140,9 +937,7 @@ export default function AdminPage() {
           </h3>
           <p className={styles.hint} style={{ marginTop: -4 }}>
             Show an ad card every this many listings in Browse (1 = an ad after every single
-            listing, higher = ads show up less often). Set this to 0 for slow/sparse sale days --
-            it shows the full list of every active ad instead, appended after whatever real sales
-            there are (even if there are none at all). Currently {adInterval === 0 ? 'showing every ad' : `every ${adInterval}`}.
+            listing, higher = ads show up less often). Currently every {adInterval}.
           </p>
           {settingsMigrationNeeded && (
             <p className={styles.hint} style={{ color: '#b98a1f' }}>
@@ -1155,7 +950,7 @@ export default function AdminPage() {
             <input
               className={styles.input}
               type="number"
-              min={0}
+              min={1}
               max={50}
               step={1}
               value={adIntervalDraft}
@@ -1239,23 +1034,8 @@ export default function AdminPage() {
                       onChange={(e) => setEditAdDraft((d) => ({ ...d, sponsor_name: e.target.value }))}
                       placeholder="Sponsor name"
                     />
-                    <label className={styles.checkboxRow}>
-                      <input
-                        type="checkbox"
-                        checked={editAdDraft.link_only}
-                        onChange={(e) => setEditAdDraft((d) => ({ ...d, link_only: e.target.checked }))}
-                      />
-                      Link only -- skip the ad&apos;s page, open the link URL directly
-                    </label>
                   </>
                 )}
-                <input
-                  className={styles.input}
-                  type="email"
-                  value={editAdDraft.owner_email}
-                  onChange={(e) => setEditAdDraft((d) => ({ ...d, owner_email: e.target.value }))}
-                  placeholder="Owner email (optional -- lets this business edit their own ad)"
-                />
                 <div className={styles.actions}>
                   <button type="button" className={styles.button} onClick={() => saveEditAd(ad)}>
                     Save
@@ -1282,17 +1062,6 @@ export default function AdminPage() {
                     </p>
                     {ad.location_type === 'physical' && (
                       <p className={styles.rowSub}>📍 {ad.address}{!Number.isFinite(ad.lat) ? ' (not located on the map)' : ''}</p>
-                    )}
-                    {ad.ad_type !== 'snippet' && ad.link_only && (
-                      <p className={styles.rowSub}>🔗 Link only -- opens {ad.link_url} directly</p>
-                    )}
-                    {ad.owner_email && (
-                      <p className={styles.rowSub}>
-                        👤 {ad.owner_email} can sign in and edit this ad
-                        <a className={styles.linkButton} href={`/ad/${ad.id}`} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 8 }}>
-                          View Page →
-                        </a>
-                      </p>
                     )}
                   </div>
                 </div>
@@ -1433,237 +1202,6 @@ export default function AdminPage() {
             </div>
           </div>
         ))}
-        </div>
-      </section>
-
-      <section id="spotted" className={styles.section}>
-        <p className={styles.sectionEyebrow}>Crowdsourced</p>
-        <h2 className={styles.sectionHeading}>Spotted Sales</h2>
-        <p className={styles.hint}>
-          Anyone can tap &ldquo;🚩 Spot a Sale&rdquo; on the Map screen to report a sale they drove
-          past, no account needed -- their GPS location marks the spot, never a public address. A
-          spot auto-confirms once enough different people report it, or once someone drives there
-          and taps &ldquo;I found it&rdquo; (which also updates the pin to their more precise
-          location). Report counts below are the only place that number is shown -- individual
-          reporters stay confidential everywhere else. Anyone who proves they&apos;re at the sale can
-          also add a photo or note (checked against the photo&apos;s own location data or their live
-          location) -- those show up right away with no approval step, but you can remove an
-          individual photo or note below if something shouldn&apos;t be there.
-        </p>
-
-        <form className={styles.formCard} onSubmit={handleSaveSpotSettings}>
-          <h3 className={styles.subHeading} style={{ marginTop: 0 }}>
-            Spotted-sale settings
-          </h3>
-          {spottedSettingsMigrationNeeded && (
-            <p className={styles.hint} style={{ color: '#b98a1f' }}>
-              Using the defaults of 300 ft / 3 reports for now -- run{' '}
-              <code>supabase/schema-v10-spotted-sales.sql</code> in the Supabase SQL Editor to make
-              this actually savable.
-            </p>
-          )}
-          <div className={styles.tagAddRow}>
-            <label className={styles.hint} style={{ marginRight: 4 }}>
-              Same-sale radius (feet)
-            </label>
-            <input
-              className={styles.input}
-              type="number"
-              min={50}
-              max={2000}
-              step={1}
-              value={spotRadiusDraft}
-              onChange={(e) => setSpotRadiusDraft(e.target.value)}
-            />
-          </div>
-          <p className={styles.hint} style={{ marginTop: -4 }}>
-            How close two reports need to be to count as the same sale -- this also sets how close
-            a visitor needs to get before the app asks them to confirm one.
-          </p>
-          <div className={styles.tagAddRow}>
-            <label className={styles.hint} style={{ marginRight: 4 }}>
-              Reports needed to auto-confirm
-            </label>
-            <input
-              className={styles.input}
-              type="number"
-              min={2}
-              max={10}
-              step={1}
-              value={spotConfirmCountDraft}
-              onChange={(e) => setSpotConfirmCountDraft(e.target.value)}
-            />
-          </div>
-          <div className={styles.tagAddRow}>
-            <button type="submit" className={styles.button} disabled={spotSettingsSaving}>
-              {spotSettingsSaving ? 'Saving…' : 'Save'}
-            </button>
-          </div>
-          {spotSettingsError && <p className={styles.error}>{spotSettingsError}</p>}
-          {spotSettingsSaved && <p className={styles.hint} style={{ color: '#2f7a4f' }}>✅ Saved.</p>}
-        </form>
-
-        {spottedSalesError && <div className={styles.bannerError}>{spottedSalesError}</div>}
-        {spottedSalesLoading && <p className={styles.hint}>Loading…</p>}
-        {!spottedSalesLoading && spottedSales.length === 0 && (
-          <p className={styles.hint}>No sales spotted yet.</p>
-        )}
-
-        <div className={styles.list}>
-          {spottedSales.map((spot) => (
-            <div className={styles.row} key={spot.id}>
-              <div className={styles.rowMain}>
-                <span
-                  className={`${styles.badge} ${
-                    spot.status === 'confirmed'
-                      ? styles.badge_approved
-                      : spot.status === 'rejected'
-                      ? styles.badge_rejected
-                      : styles.badge_pending
-                  }`}
-                >
-                  {spot.status}
-                </span>
-                <div>
-                  <p className={styles.rowTitle}>
-                    <a
-                      href={`https://maps.google.com/?q=${spot.lat},${spot.lng}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {spot.lat.toFixed(5)}, {spot.lng.toFixed(5)} ↗
-                    </a>
-                  </p>
-                  <p className={styles.rowSub}>
-                    {spot.report_count} report{spot.report_count === 1 ? '' : 's'}
-                    {spot.confirmation_method ? ` · confirmed via ${spot.confirmation_method}` : ''}
-                  </p>
-                  <p className={styles.rowSub}>
-                    First seen {new Date(spot.first_reported_at).toLocaleString()} · last{' '}
-                    {new Date(spot.last_reported_at).toLocaleString()}
-                  </p>
-
-                  {(spot.photo_urls || []).length > 0 && (
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-                      {spot.photo_urls.map((url) => (
-                        <div key={url} style={{ position: 'relative' }}>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={url} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6 }} />
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveSpottedPhoto(spot, url)}
-                            title="Remove this photo"
-                            style={{
-                              position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%',
-                              background: '#3a362e', color: '#fff', border: 'none', fontSize: 10, cursor: 'pointer',
-                              lineHeight: '18px', padding: 0,
-                            }}
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {(spot.notes || []).length > 0 && (
-                    <div style={{ marginTop: 8 }}>
-                      {spot.notes.map((n, i) => (
-                        <p key={i} className={styles.rowSub} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-                          <span>📝 {n.text}</span>
-                          <button
-                            type="button"
-                            className={styles.linkButtonDanger}
-                            style={{ flexShrink: 0 }}
-                            onClick={() => handleRemoveSpottedNote(spot, i)}
-                          >
-                            Remove
-                          </button>
-                        </p>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className={styles.actions}>
-                {spot.status !== 'confirmed' && (
-                  <button type="button" className={styles.button} onClick={() => handleSetSpottedStatus(spot, 'confirmed')}>
-                    Approve
-                  </button>
-                )}
-                {spot.status !== 'rejected' && (
-                  <button
-                    type="button"
-                    className={styles.buttonSecondary}
-                    onClick={() => handleSetSpottedStatus(spot, 'rejected')}
-                  >
-                    Reject
-                  </button>
-                )}
-                <button type="button" className={styles.linkButtonDanger} onClick={() => handleDeleteSpotted(spot)}>
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section id="players" className={styles.section}>
-        <p className={styles.sectionEyebrow}>Badges &amp; rewards</p>
-        <h2 className={styles.sectionHeading}>Players</h2>
-        <p className={styles.hint}>
-          Everyone who&apos;s earned at least one badge shows up here as soon as they hit that first
-          milestone (see the badge popup) -- this is the actual payoff of the whole badges feature:
-          an email or phone number, captured a little at a time as someone uses the app, with no
-          account required. Nothing here is ever shown publicly -- the leaderboard visitors see only
-          shows usernames.
-        </p>
-
-        {playersMigrationNeeded && (
-          <p className={styles.hint} style={{ color: '#b98a1f' }}>
-            Run <code>supabase/schema-v13-badges.sql</code> in the Supabase SQL Editor to turn on
-            badges and start capturing leads here.
-          </p>
-        )}
-
-        {playersError && <div className={styles.bannerError}>{playersError}</div>}
-        {playersLoading && <p className={styles.hint}>Loading…</p>}
-        {!playersLoading && players.length === 0 && !playersMigrationNeeded && (
-          <p className={styles.hint}>No one&apos;s earned a badge yet.</p>
-        )}
-
-        {players.length > 0 && (
-          <div className={styles.tagAddRow} style={{ marginBottom: 12 }}>
-            <button type="button" className={styles.buttonSecondary} onClick={handleExportPlayersCsv}>
-              ⬇ Export CSV
-            </button>
-            <button type="button" className={styles.linkButton} onClick={loadPlayers} style={{ marginLeft: 'auto' }}>
-              {playersLoading ? 'Refreshing…' : 'Refresh'}
-            </button>
-          </div>
-        )}
-
-        <div className={styles.list}>
-          {players.map((p) => (
-            <div className={styles.row} key={`${p.email || ''}:${p.phone || ''}:${p.createdAt}`}>
-              <div className={styles.rowMain}>
-                <span className={`${styles.badge} ${p.email || p.phone ? styles.badge_approved : styles.badge_pending}`}>
-                  {p.badgeCount} badge{p.badgeCount === 1 ? '' : 's'}
-                </span>
-                <div>
-                  <p className={styles.rowTitle}>{p.username || '(no username)'}</p>
-                  <p className={styles.rowSub}>
-                    {p.email || '—'} {p.phone ? `· ${p.phone}` : ''}
-                  </p>
-                  <p className={styles.rowSub}>
-                    Joined {new Date(p.createdAt).toLocaleDateString()}
-                    {p.marketingOptIn ? ' · ✅ OK to contact about sales/badges' : ''}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ))}
         </div>
       </section>
     </div>

@@ -1,4 +1,4 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { isAdminRequest } from '@/lib/adminAuth';
 import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabaseAdmin';
 
@@ -17,6 +17,9 @@ const EDITABLE_FIELDS = [
   'description',
   'photo_urls',
   'status',
+  'featured',
+  'featured_until',
+  'featured_comp',
 ];
 
 export async function PATCH(request, { params }) {
