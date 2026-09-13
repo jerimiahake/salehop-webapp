@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { formatTimeRange, formatDateRange } from '@/lib/format';
 import { SITE_URL } from '@/lib/site';
 import ShareButton from './ShareButton';
+import CheckInButton from './CheckInButton';
 
 const HALF_FRACTION = 0.42;
 const FULL_FRACTION = 0.88;
@@ -24,7 +25,7 @@ const TAP_THRESHOLD_PX = 6; // pointer movement under this counts as a tap, not 
 // always rendered (even before any sale has ever been selected) so
 // sheetRef.current already exists the first time a sale opens -- otherwise
 // that very first open couldn't animate in.
-export default function ListingSheet({ sale, favorited, onToggleFavorite, onClose, containerRef, session, onManage }) {
+export default function ListingSheet({ sale, favorited, onToggleFavorite, onClose, containerRef, session, onManage, onNewBadges, showToast }) {
   const sheetRef = useRef(null);
   const [activeSale, setActiveSale] = useState(sale || null);
   const [mode, setMode] = useState('closed'); // 'closed' | 'half' | 'full'
@@ -226,6 +227,16 @@ export default function ListingSheet({ sale, favorited, onToggleFavorite, onClos
                 <p className="sheet-desc">{activeSale.description}</p>
               </>
             )}
+
+            <div style={{ marginTop: 14 }}>
+              <CheckInButton
+                targetType="sale"
+                targetId={activeSale.id}
+                onNewBadges={onNewBadges}
+                showToast={showToast}
+                className="publish-btn"
+              />
+            </div>
           </div>
         </>
       )}

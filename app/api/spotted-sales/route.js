@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabaseAdmin';
 import { distanceMiles } from '@/lib/format';
+import { recordActivityAndCheckBadges } from '@/lib/badgeEngine';
 
 // Public, no-account-needed crowdsourced sale-spotting (Bob taps
 // "🚩 Spot a Sale" while driving by; Jane gets prompted to confirm one
@@ -107,6 +108,10 @@ export async function POST(request) {
     const alreadyReported = (match.reporter_device_ids || []).includes(deviceId);
     const nextDeviceIds = alreadyReported ? match.reporter_device_ids : [...(match.reporter_device_ids || []), deviceId];
     const justConfirmed = !alreadyReported && nextDeviceIds.length >= confirmCount;
+    // Was someone else already on this spot before this device reported
+    // it? If so, this report is "confirming" a sighting rather than
+    // starting one -- see lib/badges.js's Good Neighbor badge.
+    const isConfirmingSomeoneElse = !alreadyReported && (match.reporter_device_ids || []).length > 0;
 
     const updates = {
       reporter_device_ids: nextDeviceIds,
@@ -126,7 +131,17 @@ export async function POST(request) {
       .single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ ...data, alreadyReported, justConfirmed });
+
+    const newBadges = await collectSpottedSaleBadges({
+      deviceId,
+      spotId: match.id,
+      alreadyReported,
+      isConfirmingSomeoneElse,
+      justConfirmed,
+      allReporterDeviceIds: nextDeviceIds,
+    });
+
+    return NextResponse.json({ ...data, alreadyReported, justConfirmed, newBadges });
   }
 
   const { data, error } = await supabaseAdmin
@@ -136,5 +151,61 @@ export async function POST(request) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ...data, alreadyReported: false, justConfirmed: false });
+
+  const newBadges = await collectSpottedSaleBadges({
+    deviceId,
+    spotId: data.id,
+    alreadyReported: false,
+    isConfirmingSomeoneElse: false,
+    justConfirmed: false,
+    allReporterDeviceIds: [deviceId],
+  });
+
+  return NextResponse.json({ ...data, alreadyReported: false, justConfirmed: false, newBadges });
+}
+
+// Logs whatever badge-relevant activity this one report/confirmation just
+// caused, and returns only the REPORTING device's own newly-earned badges
+// (see lib/badgeEngine.js) -- so the app can pop a celebration for the
+// person who's actually here right now. Other devices credited by a spot
+// crossing the confirm threshold (see justConfirmed below) get their
+// badge recorded too, they just find out next time they open their own
+// Badges screen rather than through a live popup.
+async function collectSpottedSaleBadges({ deviceId, spotId, alreadyReported, isConfirmingSomeoneElse, justConfirmed, allReporterDeviceIds }) {
+  const collected = [];
+
+  if (!alreadyReported) {
+    const result = await recordActivityAndCheckBadges({
+      deviceId,
+      activityType: 'spotted_report',
+      refId: spotId,
+    });
+    collected.push(...result.newBadges);
+
+    if (isConfirmingSomeoneElse) {
+      const confirmingResult = await recordActivityAndCheckBadges({
+        deviceId,
+        activityType: 'spotted_confirming_report',
+        refId: spotId,
+      });
+      collected.push(...confirmingResult.newBadges);
+    }
+  }
+
+  if (justConfirmed) {
+    for (const contributorDeviceId of allReporterDeviceIds) {
+      const result = await recordActivityAndCheckBadges({
+        deviceId: contributorDeviceId,
+        activityType: 'spotted_confirmed_own',
+        refId: spotId,
+      });
+      if (contributorDeviceId === deviceId) collected.push(...result.newBadges);
+    }
+  }
+
+  // De-dup by badge id -- a single report could in principle earn the
+  // same badge from two different activity types in this one request
+  // (unlikely given the thresholds above, but cheap to guard anyway).
+  const seen = new Set();
+  return collected.filter((b) => (seen.has(b.id) ? false : (seen.add(b.id), true)));
 }

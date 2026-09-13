@@ -4,6 +4,7 @@ import exifr from 'exifr';
 import piexif from 'piexifjs';
 import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabaseAdmin';
 import { distanceMiles } from '@/lib/format';
+import { recordActivityAndCheckBadges } from '@/lib/badgeEngine';
 
 // Lets ANYONE who can prove they're actually near a spotted sale add a
 // photo and/or a short note to it, immediately (no admin approval) -- see
@@ -81,6 +82,8 @@ export async function POST(request, { params }) {
   }
 
   const file = form.get('file');
+  const deviceIdRaw = form.get('deviceId');
+  const deviceId = typeof deviceIdRaw === 'string' ? deviceIdRaw.slice(0, 100) : null;
   const noteRaw = form.get('note');
   const note = typeof noteRaw === 'string' ? noteRaw.trim().slice(0, MAX_NOTE_LENGTH) : '';
   const liveLat = Number(form.get('lat'));
@@ -205,5 +208,17 @@ export async function POST(request, { params }) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 
-  return NextResponse.json(publicShape(updated));
+  // Not blocking, and not required -- older clients (or a request with
+  // local storage blocked) just won't earn Shutterbug credit for this one.
+  let newBadges = [];
+  if (deviceId) {
+    const result = await recordActivityAndCheckBadges({
+      deviceId,
+      activityType: 'photo_contributed',
+      refId: `${spot.id}:${Date.now()}`,
+    });
+    newBadges = result.newBadges;
+  }
+
+  return NextResponse.json({ ...publicShape(updated), newBadges });
 }

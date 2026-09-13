@@ -30,6 +30,8 @@ export default function MapScreen({
   onManageListing,
   onReportSpot,
   reportingSpot = false,
+  onNewBadges,
+  showToast,
 }) {
   const mapWrapRef = useRef(null);
   const selectedSale = sales.find((s) => s.id === selectedSaleId);
@@ -63,6 +65,8 @@ export default function MapScreen({
         containerRef={mapWrapRef}
         session={session}
         onManage={onManageListing}
+        onNewBadges={onNewBadges}
+        showToast={showToast}
       />
 
       {!selectedSale && favoritedSales.length > 0 && (

@@ -16,6 +16,7 @@ import Toast from './Toast';
 import ShareToFacebookButton from './ShareToFacebookButton';
 import WelcomeOverlay from './WelcomeOverlay';
 import SpottedSaleSheet from './SpottedSaleSheet';
+import BadgeUnlockModal from './BadgeUnlockModal';
 
 const FAVORITES_KEY = 'salehop:favorites';
 const ONBOARDING_KEY = 'salehop:onboardingSeen';
@@ -65,6 +66,21 @@ export default function AppShell() {
   const [listingsLoadError, setListingsLoadError] = useState(null);
   const [listingsRefreshKey, setListingsRefreshKey] = useState(0);
   const [editingSale, setEditingSale] = useState(null);
+
+  // The ad(s), if any, this signed-in visitor owns (see
+  // supabase/schema-v12-ad-ownership.sql) -- powers AccountScreen's "My
+  // Ad(s)" section, the same way `listings` above powers "My Listings".
+  const [myAds, setMyAds] = useState([]);
+  const [myAdsLoading, setMyAdsLoading] = useState(false);
+  const [myAdsRefreshKey, setMyAdsRefreshKey] = useState(0);
+  const [editingAd, setEditingAd] = useState(null);
+
+  // Badges (see handleNewBadges below) -- badge objects queued up to
+  // celebrate, most-recent-batch-last. BadgeUnlockModal, rendered near the
+  // other overlays, is what actually shows them and decides whether to
+  // ask for an email/username.
+  const [pendingBadges, setPendingBadges] = useState([]);
+  const [showBadges, setShowBadges] = useState(false);
   // id of whichever listing's "Feature — $10" button was just tapped, so
   // only that one button/menu shows a loading state while checkout starts.
   const [featuringId, setFeaturingId] = useState(null);
@@ -226,6 +242,38 @@ export default function AppShell() {
     };
   }, [session, listingsRefreshKey]);
 
+  // Load any ad(s) this signed-in visitor owns. Filtered client-side by
+  // owner_email (case-insensitively) rather than just selecting '*' --
+  // RLS alone would also let this query see every OTHER active ad too
+  // (the public "active ads" policy is OR'd together with the "owner can
+  // view their own ad" policy), so the filter here is what actually keeps
+  // this to just their own. Most signed-in visitors are sellers with no ad
+  // at all, which is fine -- it just comes back empty and "My Ad(s)" stays
+  // hidden (see AccountScreen.js).
+  useEffect(() => {
+    if (!session || !isSupabaseConfigured) {
+      setMyAds([]);
+      return undefined;
+    }
+    let cancelled = false;
+
+    async function loadMyAds() {
+      setMyAdsLoading(true);
+      const { data, error } = await supabase.from('ads').select('*').ilike('owner_email', session.user.email);
+
+      if (cancelled) return;
+      if (!error) {
+        setMyAds(data || []);
+      }
+      setMyAdsLoading(false);
+    }
+
+    loadMyAds();
+    return () => {
+      cancelled = true;
+    };
+  }, [session, myAdsRefreshKey]);
+
   // Load active ads (sponsored cards mixed into Browse). Not critical if
   // this fails or Supabase isn't configured yet -- the app just shows no
   // ads rather than breaking anything. `adsLoaded` (only ever set true on
@@ -267,7 +315,9 @@ export default function AppShell() {
       .single()
       .then(({ data, error }) => {
         if (cancelled || error || !data) return;
-        if (Number.isInteger(data.ad_interval) && data.ad_interval > 0) {
+        // 0 is a valid, meaningful value now (show every ad) -- not just a
+        // not-yet-loaded placeholder, so it has to pass this guard too.
+        if (Number.isInteger(data.ad_interval) && data.ad_interval >= 0) {
           setAdInterval(data.ad_interval);
         }
       });
@@ -713,9 +763,52 @@ export default function AppShell() {
     showToast(message);
   }
 
+  function handleEditAd(ad) {
+    setEditingAd(ad);
+    setActiveScreen('account');
+  }
+
+  function handleCancelEditAd() {
+    setEditingAd(null);
+  }
+
+  function handleAdEditDone(message) {
+    setEditingAd(null);
+    setMyAdsRefreshKey((k) => k + 1);
+    // Also refresh the public `ads` list (used by Browse/Map) so the
+    // owner's own edit shows up there right away instead of only in "My
+    // Ad" until the next full page load.
+    if (isSupabaseConfigured) {
+      supabase
+        .from('ads')
+        .select('*')
+        .eq('active', true)
+        .then(({ data, error }) => {
+          if (!error) setAds(data || []);
+        });
+    }
+    showToast(message);
+  }
+
   function handlePublished(message) {
     setActiveScreen('browse');
     showToast(message || '🎉 Thanks! Your sale was submitted and is awaiting a quick review before it goes live.');
+  }
+
+  // Badges (supabase/schema-v13-badges.sql, lib/badges.js) -- any API call
+  // that can earn one (spotting/confirming a sale, contributing a photo,
+  // checking in) returns a `newBadges` array. This just queues whatever
+  // comes back; BadgeUnlockModal (rendered below, near the other overlays)
+  // is what actually decides whether to ask for an email/username the
+  // first time, or just show a quick congrats if this device already has
+  // one on file.
+  const handleNewBadges = useCallback((newBadges) => {
+    if (!newBadges || newBadges.length === 0) return;
+    setPendingBadges((prev) => [...prev, ...newBadges]);
+  }, []);
+
+  function handleBadgeModalDone() {
+    setPendingBadges([]);
   }
 
   // "🚩 Spot a Sale" on the Map screen -- Bob's side of the crowdsourced
@@ -747,6 +840,7 @@ export default function AppShell() {
             showToast('🚩 Thanks! Reported -- someone driving by can go confirm it.');
           }
           loadSpottedSales();
+          handleNewBadges(data.newBadges);
         } catch (err) {
           showToast(`Couldn't report that: ${err.message}`);
         } finally {
@@ -759,7 +853,7 @@ export default function AppShell() {
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
-  }, [showToast, loadSpottedSales]);
+  }, [showToast, loadSpottedSales, handleNewBadges]);
 
   // Jane's side -- responds to the proximity prompt below. `accept=false`
   // just dismisses it (already marked "prompted" so it won't nag again
@@ -877,6 +971,7 @@ export default function AppShell() {
           formData.append('lat', String(location.lat));
           formData.append('lng', String(location.lng));
         }
+        formData.append('deviceId', getOrCreateDeviceId());
 
         const res = await fetch(`/api/spotted-sales/${selectedSpottedId}/photos`, {
           method: 'POST',
@@ -888,6 +983,7 @@ export default function AppShell() {
         setSpottedDetail(data);
         loadSpottedSales();
         showToast('✅ Added -- thanks for helping out!');
+        handleNewBadges(data.newBadges);
         return true;
       } catch (err) {
         setContributeSpottedError(err.message);
@@ -896,7 +992,7 @@ export default function AppShell() {
         setContributingSpotted(false);
       }
     },
-    [selectedSpottedId, loadSpottedSales, showToast]
+    [selectedSpottedId, loadSpottedSales, showToast, handleNewBadges]
   );
 
   return (
@@ -940,6 +1036,8 @@ export default function AppShell() {
             onManageListing={(sale) => setManageMenuSale(sale)}
             onReportSpot={handleReportSpot}
             reportingSpot={reportingSpot}
+            onNewBadges={handleNewBadges}
+            showToast={showToast}
           />
         </div>
         <div className={`screen ${activeScreen === 'post' ? 'active' : ''}`}>
@@ -977,6 +1075,15 @@ export default function AppShell() {
             onFeatureSale={handleFeatureSale}
             featuringId={featuringId}
             onShowWelcome={handleShowWelcome}
+            myAds={myAds}
+            myAdsLoading={myAdsLoading}
+            editingAd={editingAd}
+            onEditAd={handleEditAd}
+            onCancelEditAd={handleCancelEditAd}
+            onAdEditDone={handleAdEditDone}
+            showBadges={showBadges}
+            onOpenBadges={() => setShowBadges(true)}
+            onCloseBadges={() => setShowBadges(false)}
           />
         </div>
       </div>
@@ -1073,6 +1180,10 @@ export default function AppShell() {
             </button>
           </div>
         </div>
+      )}
+
+      {pendingBadges.length > 0 && (
+        <BadgeUnlockModal badges={pendingBadges} onClose={handleBadgeModalDone} showToast={showToast} />
       )}
 
       {selectedSpottedId && (

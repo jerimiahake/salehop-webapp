@@ -5,6 +5,8 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { formatTimeRange, formatDateRange, toDateKey } from '@/lib/format';
 import { SITE_URL } from '@/lib/site';
 import ListingForm from './ListingForm';
+import AdOwnerForm from './AdOwnerForm';
+import BadgesScreen from './BadgesScreen';
 import ShareToFacebookButton from './ShareToFacebookButton';
 
 const STATUS_LABEL = { pending: 'Pending Review', approved: 'Live', rejected: 'Not Approved' };
@@ -32,6 +34,20 @@ export default function AccountScreen({
   onFeatureSale,
   featuringId,
   onShowWelcome,
+  // The ad(s) (if any) this signed-in visitor owns -- see
+  // supabase/schema-v12-ad-ownership.sql. Most signed-in visitors are
+  // sellers with no ad at all, so "My Ad(s)" only renders once myAds
+  // actually has something in it (see below), unlike "My Listings" above
+  // which always shows.
+  myAds = [],
+  myAdsLoading = false,
+  editingAd,
+  onEditAd,
+  onCancelEditAd,
+  onAdEditDone,
+  showBadges,
+  onOpenBadges,
+  onCloseBadges,
 }) {
   const [email, setEmail] = useState('');
   const [sending, setSending] = useState(false);
@@ -76,9 +92,9 @@ export default function AccountScreen({
   // the same way it does during Post -- tapping away mid-edit would
   // otherwise silently discard unsaved changes.
   useEffect(() => {
-    onEditingChange?.(Boolean(editingSale));
+    onEditingChange?.(Boolean(editingSale) || Boolean(editingAd) || Boolean(showBadges));
     return () => onEditingChange?.(false);
-  }, [editingSale, onEditingChange]);
+  }, [editingSale, editingAd, showBadges, onEditingChange]);
 
   async function handleSendLink() {
     if (!email.trim()) return;
@@ -273,6 +289,13 @@ export default function AccountScreen({
     );
   }
 
+  // ---------- Badges (works whether or not you're signed in -- Scout/
+  // Explorer/Community badges are tracked anonymously by device, and
+  // Seller badges only add themselves to the grid once you are) ----------
+  if (showBadges) {
+    return <BadgesScreen onClose={() => onCloseBadges?.()} listings={listings} showToast={showToast} />;
+  }
+
   // ---------- Editing an existing listing ----------
   if (session && editingSale) {
     return (
@@ -284,6 +307,11 @@ export default function AccountScreen({
         onDone={onEditDone}
       />
     );
+  }
+
+  // ---------- Editing an ad you own ----------
+  if (session && editingAd) {
+    return <AdOwnerForm ad={editingAd} onCancel={() => onCancelEditAd?.()} onDone={onAdEditDone} />;
   }
 
   // ---------- Signed out: email + magic link ----------
@@ -308,6 +336,13 @@ export default function AccountScreen({
         </div>
 
         <div className="account-scroll">
+          <div className="my-listing-card clickable" style={{ marginBottom: 14 }} onClick={() => onOpenBadges?.()}>
+            <p className="card-title">🏅 My Badges</p>
+            <p className="card-addr">
+              Spot sales, check in, and earn badges -- no account needed to start.
+            </p>
+          </div>
+
           <div className="field-group">
             <p className="field-label">Sign In</p>
 
@@ -524,6 +559,11 @@ export default function AccountScreen({
           </button>
         </div>
 
+        <div className="my-listing-card clickable" style={{ marginTop: 14 }} onClick={() => onOpenBadges?.()}>
+          <p className="card-title">🏅 My Badges</p>
+          <p className="card-addr">See what you&apos;ve earned so far, and the leaderboard</p>
+        </div>
+
         {!session.user.user_metadata?.has_password && (
           <div className="field-group" style={{ marginTop: 14 }}>
             <p className="field-label">🔒 Set a Password</p>
@@ -659,6 +699,45 @@ export default function AccountScreen({
               </div>
             );
           })}
+
+        {(myAdsLoading || myAds.length > 0) && (
+          <>
+            <div className="sidebar-label" style={{ marginTop: 18 }}>My Ad{myAds.length === 1 ? '' : 's'}</div>
+
+            {myAdsLoading && myAds.length === 0 && <div className="empty-state">Loading your ad…</div>}
+
+            {myAds.map((ad) => (
+              <div className="my-listing-card" key={ad.id}>
+                <div className={`status-badge ${ad.active ? 'approved' : 'rejected'}`}>
+                  {ad.active ? 'Live' : 'Paused'}
+                </div>
+                <p className="card-title">{ad.title}</p>
+                {ad.location_type === 'physical' && ad.address && <p className="card-addr">📍 {ad.address}</p>}
+                {ad.description && <p className="card-addr">{ad.description}</p>}
+                <div className="my-listing-actions" onClick={(e) => e.stopPropagation()}>
+                  <button type="button" className="chip" onClick={() => onEditAd?.(ad)}>
+                    Edit
+                  </button>
+                  <a className="chip" href={`/ad/${ad.id}`} target="_blank" rel="noopener noreferrer">
+                    View Page
+                  </a>
+                  <ShareToFacebookButton
+                    url={`${SITE_URL}/ad/${ad.id}`}
+                    quote={ad.title}
+                    className="chip"
+                    label="Share"
+                  />
+                </div>
+                {!ad.active && (
+                  <p className="hint" style={{ margin: '4px 0 0' }}>
+                    This ad is currently paused, so it isn&apos;t showing in Browse -- contact us if you think
+                    that&apos;s a mistake.
+                  </p>
+                )}
+              </div>
+            ))}
+          </>
+        )}
 
         <div style={{ marginTop: 24, textAlign: 'center' }}>
           <a className="hint" href="/contact" style={{ textDecoration: 'underline' }}>
