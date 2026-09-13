@@ -20,6 +20,7 @@ export default function MapScreen({
   favorites,
   selectedSaleId,
   onSelectSale,
+  onSelectSpotted,
   onToggleFavorite,
   favoritedSales,
   onOpenSaved,
@@ -42,6 +43,7 @@ export default function MapScreen({
         favorites={favorites}
         selectedSaleId={selectedSaleId}
         onSelectSale={onSelectSale}
+        onSelectSpotted={onSelectSpotted}
         center={center}
         active={active}
       />

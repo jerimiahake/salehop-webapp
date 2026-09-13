@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
 function makePinIcon({ favorited, selected, routeNum, isAd }) {
@@ -74,6 +74,7 @@ export default function LeafletMap({
   favorites,
   selectedSaleId,
   onSelectSale,
+  onSelectSpotted,
   center,
   active = true,
   interactive = true,
@@ -165,13 +166,12 @@ export default function LeafletMap({
       {spottedSales
         .filter((spot) => Number.isFinite(spot.lat) && Number.isFinite(spot.lng))
         .map((spot) => (
-          <Marker key={`spot-${spot.id}`} position={[spot.lat, spot.lng]} icon={makeSpottedPinIcon(spot.status)}>
-            <Popup>
-              {spot.status === 'confirmed'
-                ? '🚩 Reported sale -- confirmed by the community. Just a spotted location, not a full listing yet.'
-                : "🚩 Unconfirmed -- someone reported a sale near here. Not yet verified -- worth a look if you're nearby!"}
-            </Popup>
-          </Marker>
+          <Marker
+            key={`spot-${spot.id}`}
+            position={[spot.lat, spot.lng]}
+            icon={makeSpottedPinIcon(spot.status)}
+            eventHandlers={{ click: () => onSelectSpotted && onSelectSpotted(spot.id) }}
+          />
         ))}
     </MapContainer>
   );

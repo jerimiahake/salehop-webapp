@@ -227,6 +227,42 @@ export default function AdminPage() {
     }
   }
 
+  // Anyone can add a photo/note to a spotted sale with no approval step
+  // (see app/api/spotted-sales/[id]/photos/route.js) -- these two are the
+  // after-the-fact moderation path for removing one that shouldn't be
+  // there, without rejecting/deleting the whole spotted sale.
+  async function handleRemoveSpottedPhoto(spot, url) {
+    if (!window.confirm('Remove this photo?')) return;
+    try {
+      const res = await fetch(`/api/admin/spotted-sales/${spot.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ removePhotoUrl: url }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Remove failed.');
+      setSpottedSales((list) => list.map((s) => (s.id === spot.id ? data : s)));
+    } catch (err) {
+      setMessage(`Couldn't remove that photo: ${err.message}`);
+    }
+  }
+
+  async function handleRemoveSpottedNote(spot, index) {
+    if (!window.confirm('Remove this note?')) return;
+    try {
+      const res = await fetch(`/api/admin/spotted-sales/${spot.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ removeNoteAt: index }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Remove failed.');
+      setSpottedSales((list) => list.map((s) => (s.id === spot.id ? data : s)));
+    } catch (err) {
+      setMessage(`Couldn't remove that note: ${err.message}`);
+    }
+  }
+
   async function handleSaveAdInterval(e) {
     e.preventDefault();
     const value = Number(adIntervalDraft);
@@ -1317,7 +1353,10 @@ export default function AdminPage() {
           spot auto-confirms once enough different people report it, or once someone drives there
           and taps &ldquo;I found it&rdquo; (which also updates the pin to their more precise
           location). Report counts below are the only place that number is shown -- individual
-          reporters stay confidential everywhere else.
+          reporters stay confidential everywhere else. Anyone who proves they&apos;re at the sale can
+          also add a photo or note (checked against the photo&apos;s own location data or their live
+          location) -- those show up right away with no approval step, but you can remove an
+          individual photo or note below if something shouldn&apos;t be there.
         </p>
 
         <form className={styles.formCard} onSubmit={handleSaveSpotSettings}>
@@ -1411,6 +1450,47 @@ export default function AdminPage() {
                     First seen {new Date(spot.first_reported_at).toLocaleString()} · last{' '}
                     {new Date(spot.last_reported_at).toLocaleString()}
                   </p>
+
+                  {(spot.photo_urls || []).length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                      {spot.photo_urls.map((url) => (
+                        <div key={url} style={{ position: 'relative' }}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={url} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6 }} />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSpottedPhoto(spot, url)}
+                            title="Remove this photo"
+                            style={{
+                              position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%',
+                              background: '#3a362e', color: '#fff', border: 'none', fontSize: 10, cursor: 'pointer',
+                              lineHeight: '18px', padding: 0,
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {(spot.notes || []).length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      {spot.notes.map((n, i) => (
+                        <p key={i} className={styles.rowSub} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                          <span>📝 {n.text}</span>
+                          <button
+                            type="button"
+                            className={styles.linkButtonDanger}
+                            style={{ flexShrink: 0 }}
+                            onClick={() => handleRemoveSpottedNote(spot, i)}
+                          >
+                            Remove
+                          </button>
+                        </p>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className={styles.actions}>

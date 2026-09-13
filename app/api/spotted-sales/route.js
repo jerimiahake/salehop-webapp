@@ -33,12 +33,27 @@ export async function GET() {
 
   const { data, error } = await supabaseAdmin
     .from('spotted_sales')
-    .select('id, lat, lng, status')
+    .select('id, lat, lng, status, photo_urls, notes, first_reported_at')
     .neq('status', 'rejected')
     .or(`status.eq.confirmed,last_reported_at.gte.${staleCutoff}`);
 
   if (error) return NextResponse.json([]);
-  return NextResponse.json(data || []);
+
+  // Browse's list-view cards (components/SpottedSaleCard.js) just need
+  // counts, not the full photo URLs/note text -- keeps this list payload
+  // light. The full detail (used by SpottedSaleSheet.js) comes from
+  // GET /api/spotted-sales/[id] once someone actually opens one.
+  const rows = (data || []).map((row) => ({
+    id: row.id,
+    lat: row.lat,
+    lng: row.lng,
+    status: row.status,
+    photo_count: (row.photo_urls || []).length,
+    note_count: (row.notes || []).length,
+    first_reported_at: row.first_reported_at,
+  }));
+
+  return NextResponse.json(rows);
 }
 
 export async function POST(request) {

@@ -2,6 +2,7 @@
 
 import SaleCard from './SaleCard';
 import AdCard from './AdCard';
+import SpottedSaleCard from './SpottedSaleCard';
 
 // Fallback if the app_settings row hasn't loaded yet (or the schema-v8
 // migration hasn't been run) -- matches the old hardcoded behavior so
@@ -42,6 +43,8 @@ export default function BrowseScreen({
   favorites,
   onToggleFavorite,
   onOpenSale,
+  spottedSales = [],
+  onOpenSpotted,
 }) {
   let routeIdx = 0;
   // The same physical-location ad can appear more than once in a long
@@ -163,6 +166,20 @@ export default function BrowseScreen({
               />
             );
           })}
+
+        {!loading && !loadError && spottedSales.length > 0 && (
+          <>
+            <div className="sidebar-label" style={{ marginTop: 8 }}>
+              🚩 Spotted Sales Nearby — Unverified Sightings
+            </div>
+            <p className="hint" style={{ marginTop: -6, marginBottom: 12 }}>
+              Reported by passersby, not yet full listings. Tap one for details, or to add a photo/note if you find it.
+            </p>
+            {spottedSales.map((spot) => (
+              <SpottedSaleCard key={spot.id} spot={spot} onClick={() => onOpenSpotted?.(spot.id)} />
+            ))}
+          </>
+        )}
       </div>
     </>
   );

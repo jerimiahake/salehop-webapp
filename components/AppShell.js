@@ -15,6 +15,7 @@ import BottomNav from './BottomNav';
 import Toast from './Toast';
 import ShareToFacebookButton from './ShareToFacebookButton';
 import WelcomeOverlay from './WelcomeOverlay';
+import SpottedSaleSheet from './SpottedSaleSheet';
 
 const FAVORITES_KEY = 'salehop:favorites';
 const ONBOARDING_KEY = 'salehop:onboardingSeen';
@@ -93,6 +94,20 @@ export default function AppShell() {
   const [confirmPromptSale, setConfirmPromptSale] = useState(null);
   const [confirmingSpotted, setConfirmingSpotted] = useState(false);
   const [reportingSpot, setReportingSpot] = useState(false);
+
+  // The spotted-sale detail sheet (schema-v11) -- opened by tapping a 🚩
+  // pin on the map or a spotted-sale card on Browse. `spottedDetail` holds
+  // the full row (photos/notes included) once loaded from
+  // GET /api/spotted-sales/[id] -- separate from the lightweight
+  // `spottedSales` list above, which only carries counts for the map pins
+  // and Browse cards. `contributeSpottedError` is scoped to the sheet's
+  // own add-a-photo/note form, distinct from the general `toast`.
+  const [selectedSpottedId, setSelectedSpottedId] = useState(null);
+  const [spottedDetail, setSpottedDetail] = useState(null);
+  const [spottedDetailLoading, setSpottedDetailLoading] = useState(false);
+  const [spottedDetailError, setSpottedDetailError] = useState(null);
+  const [contributingSpotted, setContributingSpotted] = useState(false);
+  const [contributeSpottedError, setContributeSpottedError] = useState(null);
 
   const showToast = useCallback((message) => {
     setToast({ message, key: Date.now() });
@@ -444,6 +459,18 @@ export default function AppShell() {
 
   const referenceLocation = userLocation || MAP_CENTER;
 
+  // Same list Map already shows as pins, but sorted by distance for
+  // Browse's list-view cards (SpottedSaleCard.js) -- the API's GET already
+  // excludes rejected/stale-unconfirmed spots, this just adds `distance`
+  // and orders them the same way real listings are ordered below.
+  const spottedSalesForBrowse = useMemo(
+    () =>
+      spottedSales
+        .map((spot) => ({ ...spot, distance: distanceMiles(referenceLocation, spot) }))
+        .sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity)),
+    [spottedSales, referenceLocation]
+  );
+
   // Order ads closest-first for whoever's browsing, not by whatever order
   // they happen to come back from Supabase (previously just insertion
   // order, effectively random from a buyer's perspective). A small random
@@ -739,6 +766,94 @@ export default function AppShell() {
     [confirmPromptSale, showToast, loadSpottedSales]
   );
 
+  // Opens the spotted-sale detail sheet (map pin tap, or a Browse card
+  // tap) and loads its full detail (photos/notes) -- the list-view data
+  // in `spottedSales` only ever carries counts, not the actual content.
+  const handleOpenSpotted = useCallback((id) => {
+    setSelectedSpottedId(id);
+    setSpottedDetail(null);
+    setSpottedDetailError(null);
+    setContributeSpottedError(null);
+    setSpottedDetailLoading(true);
+    fetch(`/api/spotted-sales/${id}`)
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not load that.');
+        setSpottedDetail(data);
+      })
+      .catch((err) => setSpottedDetailError(err.message))
+      .finally(() => setSpottedDetailLoading(false));
+  }, []);
+
+  const handleCloseSpotted = useCallback(() => {
+    setSelectedSpottedId(null);
+    setSpottedDetail(null);
+    setSpottedDetailError(null);
+    setContributeSpottedError(null);
+  }, []);
+
+  // Best-effort current location for the "prove you're here" check on a
+  // photo/note contribution below -- unlike handleReportSpot/
+  // handleConfirmSpotted (which show an error and bail if location isn't
+  // available), this one quietly resolves to null instead: a contribution
+  // with a photo can still be verified purely from that photo's own EXIF
+  // GPS data server-side, so missing live location shouldn't block it
+  // outright -- the API route is what ultimately decides if either signal
+  // was good enough.
+  function getCurrentPositionSafe(timeout = 10000) {
+    return new Promise((resolve) => {
+      if (!('geolocation' in navigator)) {
+        resolve(null);
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout }
+      );
+    });
+  }
+
+  // Anyone who proves they're at a spotted sale can add a photo and/or a
+  // note, at any time, and it shows up immediately (server-side rules in
+  // app/api/spotted-sales/[id]/photos/route.js) -- returns true/false so
+  // SpottedSaleSheet.js knows whether to clear its form.
+  const handleContributeSpotted = useCallback(
+    async ({ file, note }) => {
+      if (!selectedSpottedId) return false;
+      setContributingSpotted(true);
+      setContributeSpottedError(null);
+      try {
+        const location = await getCurrentPositionSafe();
+        const formData = new FormData();
+        if (file) formData.append('file', file);
+        if (note) formData.append('note', note);
+        if (location) {
+          formData.append('lat', String(location.lat));
+          formData.append('lng', String(location.lng));
+        }
+
+        const res = await fetch(`/api/spotted-sales/${selectedSpottedId}/photos`, {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not add that.');
+
+        setSpottedDetail(data);
+        loadSpottedSales();
+        showToast('✅ Added -- thanks for helping out!');
+        return true;
+      } catch (err) {
+        setContributeSpottedError(err.message);
+        return false;
+      } finally {
+        setContributingSpotted(false);
+      }
+    },
+    [selectedSpottedId, loadSpottedSales, showToast]
+  );
+
   return (
     <div className="device">
       <div className="notch" />
@@ -758,6 +873,8 @@ export default function AppShell() {
             favorites={favorites}
             onToggleFavorite={toggleFavorite}
             onOpenSale={openSaleOnMap}
+            spottedSales={spottedSalesForBrowse}
+            onOpenSpotted={handleOpenSpotted}
           />
         </div>
         <div className={`screen ${activeScreen === 'map' ? 'active' : ''}`}>
@@ -768,6 +885,7 @@ export default function AppShell() {
             favorites={favorites}
             selectedSaleId={selectedSaleId}
             onSelectSale={setSelectedSaleId}
+            onSelectSpotted={handleOpenSpotted}
             onToggleFavorite={toggleFavorite}
             favoritedSales={favoritedSales}
             onOpenSaved={() => setActiveScreen('saved')}
@@ -910,6 +1028,18 @@ export default function AppShell() {
             </button>
           </div>
         </div>
+      )}
+
+      {selectedSpottedId && (
+        <SpottedSaleSheet
+          spot={spottedDetail}
+          loading={spottedDetailLoading}
+          error={spottedDetailError}
+          onClose={handleCloseSpotted}
+          onContribute={handleContributeSpotted}
+          contributing={contributingSpotted}
+          contributeError={contributeSpottedError}
+        />
       )}
 
       {showWelcome && <WelcomeOverlay onDismiss={handleDismissWelcome} />}
